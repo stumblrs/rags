@@ -1,0 +1,31 @@
+{
+  "name": "personal-local-ai",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "npx serve out"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
+    "@mlc-ai/web-llm": "^0.2.87",
+    "dexie": "^4.0.10",
+    "dexie-react-hooks": "^1.1.7",
+    "kokoro-js": "^1.2.1",
+    "mammoth": "^1.13.0",
+    "next": "^15.5.29",
+    "pdfjs-dist": "^6.5.438",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

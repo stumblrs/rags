@@ -1,0 +1,5 @@
+/* Enable Cross-Origin Isolation (SharedArrayBuffer) on Cloudflare Pages / Netlify static hosting */
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
+
