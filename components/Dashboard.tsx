@@ -96,6 +96,8 @@ export default function Dashboard() {
   const [voiceConfigOpen, setVoiceConfigOpen] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [revealedTranscripts, setRevealedTranscripts] = useState<Record<string, boolean>>({});
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const waitingWorkerRef = useRef<ServiceWorker | null>(null);
   const voiceSessionRef = useRef<VoiceRecorderSession | null>(null);
   const handsFreeRef = useRef(false);
   const regenCountRef = useRef(0);
@@ -176,7 +178,54 @@ export default function Dashboard() {
 
     if ("serviceWorker" in navigator) {
       if (process.env.NODE_ENV === "production") {
-        navigator.serviceWorker.register("/sw.js").catch(() => {});
+        navigator.serviceWorker
+          .register("/sw.js")
+          .then((reg) => {
+            // Check if there is already a waiting service worker
+            if (reg.waiting) {
+              waitingWorkerRef.current = reg.waiting;
+              setUpdateAvailable(true);
+            }
+
+            // Listen for newly installed updates
+            reg.addEventListener("updatefound", () => {
+              const newWorker = reg.installing;
+              if (!newWorker) return;
+              newWorker.addEventListener("statechange", () => {
+                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                  waitingWorkerRef.current = newWorker;
+                  setUpdateAvailable(true);
+                }
+              });
+            });
+
+            // Periodically check for updates (every 45 minutes)
+            const updateInterval = setInterval(() => {
+              reg.update().catch(() => {});
+            }, 45 * 60 * 1000);
+
+            // Also check when user switches back to the tab/app
+            const onVisibility = () => {
+              if (document.visibilityState === "visible") {
+                reg.update().catch(() => {});
+              }
+            };
+            document.addEventListener("visibilitychange", onVisibility);
+
+            return () => {
+              clearInterval(updateInterval);
+              document.removeEventListener("visibilitychange", onVisibility);
+            };
+          })
+          .catch(() => {});
+
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
       } else {
         navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => {});
         if ("caches" in window) {
@@ -440,6 +489,14 @@ export default function Dashboard() {
           }
         },
       });
+    }
+  }
+
+  function applyAppUpdate() {
+    if (waitingWorkerRef.current) {
+      waitingWorkerRef.current.postMessage({ type: "SKIP_WAITING" });
+    } else {
+      window.location.reload();
     }
   }
 
@@ -892,6 +949,22 @@ export default function Dashboard() {
           </div>
 
           <div className="topbar-actions">
+            {updateAvailable && (
+              <div className="pwa-update-pill">
+                <span className="pwa-update-dot" />
+                <span className="pwa-update-text">New version available</span>
+                <button className="pwa-update-btn" onClick={applyAppUpdate} title="Reload to update">
+                  Update now
+                </button>
+                <button
+                  className="pwa-update-dismiss"
+                  onClick={() => setUpdateAvailable(false)}
+                  title="Dismiss notification"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             {toast && <span className="inline-toast">{toast}</span>}
             {currentTab === "chat" && (
               <button

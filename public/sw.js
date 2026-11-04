@@ -1,11 +1,16 @@
-const CACHE_NAME = "personal-local-ai-v3";
+const CACHE_NAME = "personal-local-ai-v4";
 const CORE_ASSETS = ["/", "/manifest.webmanifest", "/icon.svg", "/pdf.worker.min.mjs"];
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => {})
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
