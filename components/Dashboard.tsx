@@ -96,6 +96,7 @@ export default function Dashboard() {
   const [voiceConfigOpen, setVoiceConfigOpen] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [revealedTranscripts, setRevealedTranscripts] = useState<Record<string, boolean>>({});
+  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const waitingWorkerRef = useRef<ServiceWorker | null>(null);
   const voiceSessionRef = useRef<VoiceRecorderSession | null>(null);
@@ -1425,23 +1426,39 @@ export default function Dashboard() {
                             </>
                           )}
                           {m.sources && m.sources.length > 0 && (
-                            <div className="citation-pills">
-                              {m.sources.map((s, i) => {
-                                const loc = s.section ? s.section : s.page ? `Page ${s.page}` : `Chunk ${s.chunk_index + 1}`;
-                                return (
-                                  <button
-                                    key={i}
-                                    className="citation-pill"
-                                    onClick={() => openCitation(s)}
-                                    title="Click to inspect full document context & highlighted passage"
-                                  >
-                                    <span>[{i + 1}]</span>
-                                    <b>{s.filename}</b>
-                                    <span>· {loc}</span>
-                                    <span className="mono">({(s.score * 100).toFixed(0)}%)</span>
-                                  </button>
-                                );
-                              })}
+                            <div className="citations-container">
+                              <button
+                                type="button"
+                                className="citations-toggle-btn"
+                                onClick={() =>
+                                  setExpandedSources((prev) => ({
+                                    ...prev,
+                                    [m.message_id]: !prev[m.message_id],
+                                  }))
+                                }
+                              >
+                                <span>{expandedSources[m.message_id] ? "▾ Hide sources" : `▸ Sources (${m.sources.length})`}</span>
+                              </button>
+                              {expandedSources[m.message_id] && (
+                                <div className="citation-pills">
+                                  {m.sources.map((s, i) => {
+                                    const loc = s.section ? s.section : s.page ? `Page ${s.page}` : `Chunk ${s.chunk_index + 1}`;
+                                    return (
+                                      <button
+                                        key={i}
+                                        className="citation-pill"
+                                        onClick={() => openCitation(s)}
+                                        title="Click to inspect full document context & highlighted passage"
+                                      >
+                                        <span>[{i + 1}]</span>
+                                        <b>{s.filename}</b>
+                                        <span>· {loc}</span>
+                                        <span className="mono">({(s.score * 100).toFixed(0)}%)</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           )}
                           <div className="card-tools" style={{ marginTop: 10 }}>

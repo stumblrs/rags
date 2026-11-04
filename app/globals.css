@@ -594,13 +594,38 @@ button { cursor: pointer; }
 .chat-card p { font-size: 13.5px; line-height: 1.6; color: var(--text-1); white-space: pre-wrap; }
 .chat-bubble-row.user .chat-card p { color: #fff; }
 
+.citations-container {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.citations-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.citations-toggle-btn:hover {
+  color: var(--text-0);
+  background: var(--bg-2);
+}
+
 .citation-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  animation: fadeIn 0.18s ease-out;
 }
 .citation-pill {
   display: inline-flex;
