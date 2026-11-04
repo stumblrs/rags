@@ -569,21 +569,57 @@ export async function startVoiceInput(options: {
     throw new Error("Microphone access is not supported in this browser.");
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      channelCount: 1,
-    },
-  });
-
   const bcp47 = LANG_BCP47[options.language] || "en-US";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const SpeechRec = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
+  const SpeechRec =
+    typeof window !== "undefined"
+      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      : null;
 
+  // Track state across both native STT and audio recording
+  let userStopped = false;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let stream: MediaStream | null = null;
+  let recInstance: any = null;
+  let activeWhisperSession: VoiceRecorderSession | null = null;
+
+  const cleanupNative = () => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    if (recInstance) {
+      try {
+        recInstance.onresult = null;
+        recInstance.onerror = null;
+        recInstance.onend = null;
+        recInstance.stop();
+      } catch {}
+      recInstance = null;
+    }
+  };
+
+  const startWhisperFallback = async (reason?: string) => {
+    cleanupNative();
+    if (userStopped) return;
+    options.onStatus?.(reason || "Switching to direct audio recording…");
+    try {
+      if (!stream || !stream.active) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+      }
+      activeWhisperSession = await startWhisperRecordingFromStream(stream, options);
+    } catch (err) {
+      options.onError((err as Error).message || "Microphone recording failed.");
+    }
+  };
+
+  // 1. Try Native SpeechRecognition if available (Chrome, Edge, Safari, Android Chrome, iOS Safari)
   if (SpeechRec) {
     try {
       const rec = new SpeechRec();
+      recInstance = rec;
       rec.lang = bcp47;
       rec.continuous = true;
       rec.interimResults = true;
@@ -591,32 +627,18 @@ export async function startVoiceInput(options: {
 
       let accumulatedFinal = "";
       let currentInterim = "";
-      let userStopped = false;
-      let switchedToWhisper = false;
-      let silenceTimer: ReturnType<typeof setTimeout> | null = null;
-      let activeWhisperSession: VoiceRecorderSession | null = null;
-
-      const releaseMicStream = () => {
-        if (silenceTimer) {
-          clearTimeout(silenceTimer);
-          silenceTimer = null;
-        }
-        stream.getTracks().forEach((t) => t.stop());
-      };
+      let speechReceived = false;
 
       const finishAndSubmit = () => {
         if (userStopped) return;
         userStopped = true;
-        releaseMicStream();
-        try {
-          rec.stop();
-        } catch {}
+        cleanupNative();
         const fullText = (accumulatedFinal + " " + currentInterim).replace(/\s+/g, " ").trim();
         options.onFinal(fullText);
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rec.onresult = (event: any) => {
+        speechReceived = true;
         let interim = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0]?.transcript || "";
@@ -630,18 +652,23 @@ export async function startVoiceInput(options: {
         const combined = (accumulatedFinal + " " + currentInterim).replace(/\s+/g, " ").trim();
         if (combined) {
           options.onInterim(combined);
-          options.onStatus?.("Listening… (Tap mic when done, or pause 2.5s to send)");
+          options.onStatus?.("Listening… (Tap mic when done, or pause to send)");
           if (silenceTimer) clearTimeout(silenceTimer);
           silenceTimer = setTimeout(() => {
             if (!userStopped && combined.length > 0) {
               finishAndSubmit();
             }
-          }, 2600);
+          }, 2400);
         }
       };
 
       rec.onend = () => {
-        if (userStopped || switchedToWhisper) return;
+        if (userStopped) return;
+        // If native speech recognition ended without producing any text, fall back to direct audio recording
+        if (!speechReceived && !accumulatedFinal.trim()) {
+          startWhisperFallback("No speech captured by browser STT. Switching to direct audio…");
+          return;
+        }
         try {
           rec.start();
         } catch {
@@ -649,41 +676,35 @@ export async function startVoiceInput(options: {
         }
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rec.onerror = async (ev: any) => {
-        if (userStopped || switchedToWhisper) return;
+        if (userStopped) return;
         const code = ev?.error || "";
 
         if (code === "no-speech") {
-          options.onStatus?.("Listening… Speak into your microphone");
+          // If native STT times out on silence, switch to direct recording so user can speak whenever ready
+          startWhisperFallback("Listening… speak your question");
           return;
         }
 
-        if (code === "network" || code === "service-not-allowed" || code === "audio-capture" || code === "aborted") {
-          switchedToWhisper = true;
-          try {
-            rec.stop();
-          } catch {}
-          try {
-            activeWhisperSession = await startWhisperRecordingFromStream(stream, options);
-          } catch (e) {
-            releaseMicStream();
-            options.onError((e as Error).message || "Microphone error");
-          }
+        if (
+          code === "network" ||
+          code === "service-not-allowed" ||
+          code === "audio-capture" ||
+          code === "aborted" ||
+          code === "not-allowed"
+        ) {
+          // If browser speech service fails (e.g. mobile Chrome network STT block), seamlessly fall back to MediaRecorder
+          startWhisperFallback("Using on-device audio recording…");
           return;
         }
 
         userStopped = true;
-        releaseMicStream();
-        if (code === "not-allowed" || code === "permission-denied") {
-          options.onError("Microphone permission denied.");
-        } else {
-          options.onError(`Voice input error: ${code || "unavailable"}`);
-        }
+        cleanupNative();
+        options.onError(`Microphone: ${code || "Error"}`);
       };
 
       rec.start();
-      options.onStatus?.("Listening… Speak now (Tap mic when finished)");
+      options.onStatus?.("Listening… speak your question (Tap mic when done)");
 
       return {
         stop: () => {
@@ -699,18 +720,19 @@ export async function startVoiceInput(options: {
             return;
           }
           userStopped = true;
-          releaseMicStream();
-          try {
-            rec.stop();
-          } catch {}
+          cleanupNative();
           options.onFinal("");
         },
       };
     } catch {
-      // Fall through to on-device Whisper recording using the already-opened stream
+      // Fall through to direct audio recording if SpeechRec constructor fails
     }
   }
 
+  // 2. Direct Audio Recording via getUserMedia + MediaRecorder fallback
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true },
+  });
   return startWhisperRecordingFromStream(stream, options);
 }
 
@@ -724,6 +746,113 @@ async function startWhisperRecordingFromStream(
     onError: (err: string) => void;
   }
 ): Promise<VoiceRecorderSession> {
+  // Use MediaRecorder if supported (Universal on Chrome, Firefox, Safari iOS 14.8+, Android)
+  if (typeof MediaRecorder !== "undefined") {
+    let mimeType = "";
+    if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+      mimeType = "audio/webm;codecs=opus";
+    } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+      mimeType = "audio/mp4";
+    } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+      mimeType = "audio/ogg";
+    }
+
+    const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    const audioChunks: Blob[] = [];
+    let stopped = false;
+    const startTime = Date.now();
+
+    const intervalTimer = setInterval(() => {
+      if (stopped) return;
+      const secs = Math.floor((Date.now() - startTime) / 1000);
+      options.onStatus?.(`Recording voice (${secs}s)… Tap mic when done`);
+    }, 1000);
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        audioChunks.push(e.data);
+      }
+    };
+
+    const cleanup = () => {
+      clearInterval(intervalTimer);
+      stream.getTracks().forEach((t) => t.stop());
+    };
+
+    const stop = async () => {
+      if (stopped) return;
+      stopped = true;
+      cleanup();
+
+      await new Promise<void>((resolve) => {
+        mediaRecorder.onstop = () => resolve();
+        try {
+          if (mediaRecorder.state !== "inactive") mediaRecorder.stop();
+          else resolve();
+        } catch {
+          resolve();
+        }
+      });
+
+      const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      if (audioBlob.size < 1200) {
+        options.onFinal("");
+        return;
+      }
+
+      try {
+        options.onStatus?.("Transcribing speech locally with Whisper…");
+        const transcriber = await getWhisperTranscriber(options.onStatus);
+        const arrayBuf = await audioBlob.arrayBuffer();
+        const audioCtx = new AudioContext();
+        const decoded = await audioCtx.decodeAudioData(arrayBuf);
+        await audioCtx.close().catch(() => {});
+
+        // Resample/extract to 16kHz Float32Array mono channel for Whisper
+        const inputData = decoded.getChannelData(0);
+        const sampleRate = decoded.sampleRate;
+        let float32Data: Float32Array;
+
+        if (sampleRate === 16000) {
+          float32Data = inputData;
+        } else {
+          // Linear resample to 16kHz
+          const ratio = sampleRate / 16000;
+          const newLen = Math.round(inputData.length / ratio);
+          float32Data = new Float32Array(newLen);
+          for (let i = 0; i < newLen; i++) {
+            float32Data[i] = inputData[Math.min(Math.round(i * ratio), inputData.length - 1)];
+          }
+        }
+
+        const whisperLang = WHISPER_LANG[options.language] || "english";
+        const out = await transcriber(float32Data, {
+          language: whisperLang,
+          task: "transcribe",
+        });
+        const text = (out?.text || "").trim();
+        options.onFinal(text);
+      } catch (err) {
+        options.onError("Local Whisper transcription failed.");
+      }
+    };
+
+    const cancel = () => {
+      if (stopped) return;
+      stopped = true;
+      cleanup();
+      try {
+        if (mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      } catch {}
+      options.onFinal("");
+    };
+
+    mediaRecorder.start(250);
+    options.onStatus?.("Recording voice (0s)… Tap mic when done");
+    return { stop, cancel };
+  }
+
+  // Fallback to ScriptProcessor if MediaRecorder is somehow unavailable
   const audioCtx = new AudioContext({ sampleRate: 16000 });
   const source = audioCtx.createMediaStreamSource(stream);
   const processor = audioCtx.createScriptProcessor(4096, 1, 1);
