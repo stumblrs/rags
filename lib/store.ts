@@ -14,7 +14,7 @@ export interface ChatbotConfig {
   response_style: "simple" | "detailed" | "bullets" | "steps" | "technical" | "executive";
 }
 
-export type VoiceEngineMode = "auto" | "kokoro" | "voicebox" | "browser";
+export type VoiceEngineMode = "auto" | "piper" | "kokoro" | "voicebox" | "browser";
 
 /** Tunable RAG, Model & Voice parameters (§4.7 & §9) */
 export interface RagSettings {
@@ -25,10 +25,16 @@ export interface RagSettings {
   selectedLlmId: string; // auto-detected or user-overridden
   userSelectedModel: boolean; // true if user manually overrode hardware recommendation
   enableOcr: boolean; // default true
-  voiceEngine: VoiceEngineMode; // "auto" | "kokoro" | "voicebox" | "browser"
+  voiceEngine: VoiceEngineMode; // "auto" | "piper" | "kokoro" | "voicebox" | "browser"
+  piperVoiceId: string; // e.g. "en_US-hfc_female-medium", "en_US-lessac-medium", "en_GB-alba-medium"
   kokoroVoiceId: string; // e.g. "af_heart", "af_bella", "am_adam", "bf_emma", "bm_george"
   voiceboxUrl: string; // default "http://127.0.0.1:17493"
   voiceboxProfileId: string; // optional cloned voice profile ID in Voicebox.sh
+  voiceSpeed: number; // 0.7 to 1.5 (default 1.0)
+  voicePitch: number; // 0.7 to 1.3 (default 1.0)
+  systemVoiceURI: string; // optional specific OS SpeechSynthesisVoice URI
+  autoSendVoice: boolean; // whether finishing voice recording automatically submits the question
+  voiceResponseMode: "spoken_bubble" | "spoken_and_text"; // "spoken_bubble" talks back without dumping a wall of text
 }
 
 export interface HardwareProfile {
@@ -98,10 +104,16 @@ export const useApp = create<AppState>()(
         selectedLlmId: "SmolLM2-360M-Instruct-q4f16_1-MLC",
         userSelectedModel: false,
         enableOcr: true,
-        voiceEngine: "auto",
+        voiceEngine: "piper",
+        piperVoiceId: "en_US-hfc_female-medium",
         kokoroVoiceId: "af_heart",
         voiceboxUrl: "http://127.0.0.1:17493",
         voiceboxProfileId: "",
+        voiceSpeed: 1.0,
+        voicePitch: 1.0,
+        systemVoiceURI: "",
+        autoSendVoice: true,
+        voiceResponseMode: "spoken_bubble",
       },
       hardware: null,
       theme: "dark",

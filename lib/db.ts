@@ -54,6 +54,7 @@ export interface MessageRecord {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  voiceMode?: boolean; // true when asked via microphone -> assistant replies as a spoken audio bubble
   created_at: string;
 }
 export interface ConversationRecord {

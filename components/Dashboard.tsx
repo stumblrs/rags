@@ -15,9 +15,16 @@ import {
   topTerms,
 } from "@/lib/rag";
 import { detectHardwareAndSelectModel, ensureLlmEngine, generateGroundedAnswer, hasWebGPU } from "@/lib/ai";
-import { speakAnswer, startVoiceInput, stopSpeaking, type VoiceRecorderSession } from "@/lib/voice";
+import {
+  speakAnswer,
+  startVoiceInput,
+  stopSpeaking,
+  KOKORO_VOICES,
+  PIPER_VOICES,
+  type VoiceRecorderSession,
+} from "@/lib/voice";
 import { formatBytes } from "@/lib/backup";
-import { useApp, type AvatarCategory, type ChatbotConfig } from "@/lib/store";
+import { useApp, type AvatarCategory, type ChatbotConfig, type VoiceEngineMode } from "@/lib/store";
 import { AvatarGlyph, SendGlyph, UserGlyph } from "./Icons";
 import KnowledgeBasePanel from "./KnowledgeBasePanel";
 import VectorDatabasePanel from "./VectorDatabasePanel";
@@ -44,6 +51,8 @@ export default function Dashboard() {
   const {
     chatbot,
     setChatbot,
+    ragSettings,
+    setRagSettings,
     hardware,
     theme,
     setTheme,
@@ -84,7 +93,9 @@ export default function Dashboard() {
   const [listening, setListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const [handsFreeVoice, setHandsFreeVoice] = useState(false);
+  const [voiceConfigOpen, setVoiceConfigOpen] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [revealedTranscripts, setRevealedTranscripts] = useState<Record<string, boolean>>({});
   const voiceSessionRef = useRef<VoiceRecorderSession | null>(null);
   const handsFreeRef = useRef(false);
   const regenCountRef = useRef(0);
@@ -264,13 +275,14 @@ export default function Dashboard() {
   async function runQuestion(
     q: string,
     existingCid?: string | null,
-    regenOpts?: { variation: number; previousResponse: string }
+    regenOpts?: { variation: number; previousResponse: string; fromVoice?: boolean }
   ) {
     setBusy(true);
     setStreamText("");
     setLiveSources([]);
 
     const variation = regenOpts?.variation ?? 0;
+    const fromVoice = Boolean(regenOpts?.fromVoice);
     const isOverview = isBroadOverviewQuery(q);
     const scopeDesc =
       selectedDocIds.length > 0
@@ -382,7 +394,12 @@ export default function Dashboard() {
       q,
       sources,
       chatbot,
-      (partial) => setStreamText(partial),
+      (partial) => {
+        // When replying as a spoken audio bubble, don't flash a wall of streaming text
+        if (!fromVoice || useApp.getState().ragSettings.voiceResponseMode === "spoken_and_text") {
+          setStreamText(partial);
+        }
+      },
       priorMsgs,
       regenOpts
     );
@@ -397,13 +414,14 @@ export default function Dashboard() {
       role: "assistant",
       content,
       sources,
+      voiceMode: fromVoice,
       created_at: new Date().toISOString(),
     });
     setBusy(false);
 
-    // If Hands-Free Voice Conversation mode is enabled, automatically speak the assistant's answer aloud
-    // and re-open the microphone once finished so the user can reply naturally.
-    if (handsFreeRef.current) {
+    // Automatically talk back whenever the user asked via the microphone OR when Hands-Free mode is active!
+    if (fromVoice || handsFreeRef.current) {
+      setSpeakingId(newMsgId);
       speakAnswer(content, chatbot, {
         onStatus: (st) => setVoiceStatus(st || null),
         onStart: () => {
@@ -425,7 +443,7 @@ export default function Dashboard() {
     }
   }
 
-  async function toggleVoiceInput(autoSendOnFinish = false) {
+  async function toggleVoiceInput(forceAutoSend?: boolean) {
     if (listening && voiceSessionRef.current) {
       voiceSessionRef.current.stop();
       voiceSessionRef.current = null;
@@ -436,7 +454,7 @@ export default function Dashboard() {
     stopSpeaking();
     setSpeakingId(null);
     setListening(true);
-    setVoiceStatus("Listening…");
+    setVoiceStatus("Requesting microphone access…");
 
     try {
       const session = await startVoiceInput({
@@ -451,8 +469,12 @@ export default function Dashboard() {
           setVoiceStatus(null);
           if (finalText.trim()) {
             setPrompt(finalText.trim());
-            if (autoSendOnFinish || handsFreeRef.current) {
-              sendQuestion(finalText.trim());
+            const shouldAutoSend =
+              forceAutoSend !== undefined
+                ? forceAutoSend
+                : Boolean(useApp.getState().ragSettings.autoSendVoice ?? true) || handsFreeRef.current;
+            if (shouldAutoSend) {
+              sendQuestion(finalText.trim(), true);
             }
           }
         },
@@ -470,6 +492,15 @@ export default function Dashboard() {
       setVoiceStatus(null);
       flash((e as Error).message || "Could not start microphone");
     }
+  }
+
+  function cancelVoiceInput() {
+    if (voiceSessionRef.current) {
+      voiceSessionRef.current.cancel();
+      voiceSessionRef.current = null;
+    }
+    setListening(false);
+    setVoiceStatus(null);
   }
 
   function toggleSpeakMessage(msg: MessageRecord) {
@@ -493,7 +524,7 @@ export default function Dashboard() {
     });
   }
 
-  async function sendQuestion(overridePrompt?: string) {
+  async function sendQuestion(overridePrompt?: string, fromVoice = false) {
     const q = (overridePrompt ?? prompt).trim();
     if (!q || busy) return;
     setPrompt("");
@@ -514,9 +545,10 @@ export default function Dashboard() {
       conversation_id: cid,
       role: "user",
       content: q,
+      voiceMode: fromVoice,
       created_at: new Date().toISOString(),
     });
-    await runQuestion(q, cid);
+    await runQuestion(q, cid, { variation: 0, previousResponse: "", fromVoice });
   }
 
   async function regenerate(assistantMsg: MessageRecord) {
@@ -527,10 +559,12 @@ export default function Dashboard() {
     if (!prevUser) return;
     regenCountRef.current += 1;
     const prevContent = assistantMsg.content;
+    const wasVoice = Boolean(assistantMsg.voiceMode || prevUser.voiceMode);
     await db.messages.delete(assistantMsg.message_id);
     await runQuestion(prevUser.content, assistantMsg.conversation_id, {
       variation: regenCountRef.current,
       previousResponse: prevContent,
+      fromVoice: wasVoice,
     });
   }
 
@@ -1232,20 +1266,91 @@ export default function Dashboard() {
                             <UserGlyph />
                           </div>
                           <div className="chat-card">
+                            {m.voiceMode && (
+                              <div className="voice-user-badge">
+                                <span>🎙️ Voice query</span>
+                              </div>
+                            )}
                             <p>{m.content}</p>
                           </div>
                         </div>
                       );
                     }
                     const [head, body] = splitMessage(m.content);
+                    const isSpokenBubble =
+                      Boolean(m.voiceMode) && (ragSettings.voiceResponseMode ?? "spoken_bubble") === "spoken_bubble";
+                    const showTranscript = !isSpokenBubble || Boolean(revealedTranscripts[m.message_id]);
+                    const isCurrentlySpeaking = speakingId === m.message_id;
+                    const wordCount = m.content.trim().split(/\s+/).length;
+                    const approxSeconds = Math.max(2, Math.round(wordCount / 2.6));
+
                     return (
                       <div key={m.message_id} className="chat-bubble-row">
                         <div className="chat-avatar ai" style={{ overflow: "hidden" }}>
                           <AvatarGlyph avatar={botAvatar} customUrl={botCustomUrl} />
                         </div>
                         <div className="chat-card">
-                          <h4>{head}</h4>
-                          {body && <p>{body}</p>}
+                          {isSpokenBubble && (
+                            <div className={`voice-audio-bubble ${isCurrentlySpeaking ? "speaking" : ""}`}>
+                              <button
+                                type="button"
+                                className="voice-play-btn"
+                                onClick={() => toggleSpeakMessage(m)}
+                                title={isCurrentlySpeaking ? "Stop speaking" : "Play spoken response"}
+                              >
+                                {isCurrentlySpeaking ? "⏹" : "▶"}
+                              </button>
+                              <div className="voice-wave-wrap">
+                                <div className="voice-wave-top">
+                                  <span className="voice-wave-title">
+                                    {isCurrentlySpeaking
+                                      ? `${botName} is speaking…`
+                                      : `Spoken Reply from ${botName}`}
+                                  </span>
+                                  <span className="voice-wave-meta">
+                                    ~{approxSeconds}s ·{" "}
+                                    {ragSettings.voiceEngine === "piper" || !ragSettings.voiceEngine
+                                      ? "Piper Neural TTS"
+                                      : ragSettings.voiceEngine === "kokoro"
+                                      ? "Kokoro-82M"
+                                      : ragSettings.voiceEngine === "voicebox"
+                                      ? "Voicebox Studio"
+                                      : "Local TTS"}
+                                  </span>
+                                </div>
+                                <div className={`voice-wave-bars ${isCurrentlySpeaking ? "active" : ""}`}>
+                                  {Array.from({ length: 28 }).map((_, idx) => (
+                                    <span
+                                      key={idx}
+                                      style={{
+                                        height: `${Math.max(22, ((idx * 37 + 13) % 85) + 15)}%`,
+                                        animationDelay: `${(idx % 7) * 0.09}s`,
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="voice-transcript-toggle"
+                                onClick={() =>
+                                  setRevealedTranscripts((prev) => ({
+                                    ...prev,
+                                    [m.message_id]: !prev[m.message_id],
+                                  }))
+                                }
+                              >
+                                {showTranscript ? "Hide text" : "Show text"}
+                              </button>
+                            </div>
+                          )}
+
+                          {showTranscript && (
+                            <>
+                              <h4>{head}</h4>
+                              {body && <p>{body}</p>}
+                            </>
+                          )}
                           {m.sources && m.sources.length > 0 && (
                             <div className="citation-pills">
                               {m.sources.map((s, i) => {
@@ -1272,7 +1377,7 @@ export default function Dashboard() {
                               onClick={() => toggleSpeakMessage(m)}
                               title="Listen to this response aloud (Local TTS)"
                             >
-                              {speakingId === m.message_id ? "⏹ Stop speaking" : "🔊 Listen"}
+                              {speakingId === m.message_id ? "⏹ Stop speaking" : "🔊 Replay voice"}
                             </button>
                             <button
                               onClick={() => {
@@ -1368,29 +1473,204 @@ export default function Dashboard() {
                       })}
                     </>
                   )}
-                  <button
-                    className={`chip voice-mode-chip ${handsFreeVoice ? "active" : ""}`}
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => {
-                      const next = !handsFreeVoice;
-                      setHandsFreeVoice(next);
-                      if (next && !listening && !busy) {
-                        toggleVoiceInput(true);
-                      }
-                    }}
-                    title="Hands-free voice conversation: speak your question, hear the grounded answer aloud, and continue talking automatically"
-                  >
-                    {handsFreeVoice ? "🎙️ Live Voice Mode: ON" : "🎙️ Hands-Free Voice"}
-                  </button>
+                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+                    <button
+                      className={`chip voice-mode-chip ${handsFreeVoice ? "active" : ""}`}
+                      onClick={() => {
+                        const next = !handsFreeVoice;
+                        setHandsFreeVoice(next);
+                        if (next && !listening && !busy) {
+                          toggleVoiceInput(true);
+                        }
+                      }}
+                      title="Hands-free voice conversation: speak your question, hear the grounded answer aloud, and continue talking automatically"
+                    >
+                      {handsFreeVoice ? "🎙️ Live Voice: ON" : "🎙️ Hands-Free"}
+                    </button>
+
+                    <button
+                      className={`chip ${voiceConfigOpen ? "active" : ""}`}
+                      onClick={() => setVoiceConfigOpen((o) => !o)}
+                      title="Configure voice synthesis engine, voice persona, speed, and pitch"
+                    >
+                      🔊 Voice Settings ▾
+                    </button>
+
+                    {voiceConfigOpen && (
+                      <div
+                        className="scope-dropdown"
+                        style={{ right: 0, left: "auto", bottom: "calc(100% + 8px)", top: "auto", width: 320, zIndex: 70 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="scope-dropdown-head">
+                          <span>Voice Synthesis &amp; Mic Config</span>
+                          <button className="link-btn" onClick={() => setVoiceConfigOpen(false)}>
+                            Done
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "8px 6px 4px" }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 4 }}>When I Use the Mic</div>
+                            <select
+                              className="select-field"
+                              style={{ width: "100%" }}
+                              value={mounted ? ragSettings.voiceResponseMode || "spoken_bubble" : "spoken_bubble"}
+                              onChange={(e) =>
+                                setRagSettings({
+                                  voiceResponseMode: e.target.value as "spoken_bubble" | "spoken_and_text",
+                                })
+                              }
+                            >
+                              <option value="spoken_bubble">Talk Back (Spoken Audio Bubble Only)</option>
+                              <option value="spoken_and_text">Talk Back + Show Full Text</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 4 }}>Synthesis Engine</div>
+                            <select
+                              className="select-field"
+                              style={{ width: "100%" }}
+                              value={mounted ? ragSettings.voiceEngine || "piper" : "piper"}
+                              onChange={(e) => setRagSettings({ voiceEngine: e.target.value as VoiceEngineMode })}
+                            >
+                              <option value="piper">Piper Neural TTS (OPFS · Fast &amp; Multilingual)</option>
+                              <option value="auto">Smart Auto (Voicebox → Piper → Kokoro → OS)</option>
+                              <option value="kokoro">Kokoro-82M Neural Studio Voice</option>
+                              <option value="voicebox">Voicebox.sh Local Studio (127.0.0.1:17493)</option>
+                              <option value="browser">OS System Voice (Instant · 0MB)</option>
+                            </select>
+                          </div>
+
+                          {mounted &&
+                            (ragSettings.voiceEngine === "piper" ||
+                              ragSettings.voiceEngine === "auto" ||
+                              !ragSettings.voiceEngine) && (
+                              <div>
+                                <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 4 }}>
+                                  Piper Neural Voice (Cached in OPFS)
+                                </div>
+                                <select
+                                  className="select-field"
+                                  style={{ width: "100%" }}
+                                  value={ragSettings.piperVoiceId || "en_US-hfc_female-medium"}
+                                  onChange={(e) => setRagSettings({ piperVoiceId: e.target.value })}
+                                >
+                                  {PIPER_VOICES.map((v) => (
+                                    <option key={v.id} value={v.id}>
+                                      {v.label} ({v.language})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                          {mounted && ragSettings.voiceEngine === "kokoro" && (
+                            <div>
+                              <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 4 }}>Kokoro-82M Neural Voice</div>
+                              <select
+                                className="select-field"
+                                style={{ width: "100%" }}
+                                value={ragSettings.kokoroVoiceId || "af_heart"}
+                                onChange={(e) => setRagSettings({ kokoroVoiceId: e.target.value })}
+                              >
+                                {KOKORO_VOICES.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.label} ({v.accent})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <div>
+                              <div style={{ fontSize: 11, color: "var(--text-2)" }}>
+                                Speed: <b style={{ color: "var(--text-0)" }}>{(mounted ? ragSettings.voiceSpeed ?? 1 : 1).toFixed(2)}x</b>
+                              </div>
+                              <input
+                                type="range"
+                                min={0.7}
+                                max={1.4}
+                                step={0.05}
+                                style={{ width: "100%" }}
+                                value={mounted ? ragSettings.voiceSpeed ?? 1.0 : 1.0}
+                                onChange={(e) => setRagSettings({ voiceSpeed: Number(e.target.value) })}
+                              />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: "var(--text-2)" }}>
+                                Pitch: <b style={{ color: "var(--text-0)" }}>{(mounted ? ragSettings.voicePitch ?? 1 : 1).toFixed(2)}</b>
+                              </div>
+                              <input
+                                type="range"
+                                min={0.75}
+                                max={1.25}
+                                step={0.05}
+                                style={{ width: "100%" }}
+                                value={mounted ? ragSettings.voicePitch ?? 1.0 : 1.0}
+                                onChange={(e) => setRagSettings({ voicePitch: Number(e.target.value) })}
+                              />
+                            </div>
+                          </div>
+
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-0)" }}>
+                            <input
+                              type="checkbox"
+                              checked={mounted ? ragSettings.autoSendVoice ?? true : true}
+                              onChange={(e) => setRagSettings({ autoSendVoice: e.target.checked })}
+                            />
+                            Auto-send message when finished speaking
+                          </label>
+
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
+                            <button
+                              className="btn-secondary"
+                              style={{ fontSize: 11.5, padding: "5px 10px" }}
+                              onClick={() =>
+                                speakAnswer(
+                                  `Hi! I am ${botName}. My voice synthesis is configured and ready.`,
+                                  chatbot,
+                                  { onStatus: (st) => setVoiceStatus(st || null) }
+                                )
+                              }
+                            >
+                              🔊 Preview Voice
+                            </button>
+                            <button
+                              className="link-btn"
+                              onClick={() => {
+                                setVoiceConfigOpen(false);
+                                openModal("settings");
+                              }}
+                            >
+                              Full Studio Settings →
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {voiceStatus && (
                   <div className="voice-status-banner">
                     <span className="voice-pulse-dot" />
-                    <span>{voiceStatus}</span>
-                    <button className="link-btn" onClick={() => toggleVoiceInput(false)}>
-                      Stop
-                    </button>
+                    <span style={{ flex: 1 }}>{voiceStatus}</span>
+                    {listening && (
+                      <>
+                        <button
+                          className="btn-primary"
+                          style={{ padding: "3px 10px", fontSize: 11.5 }}
+                          onClick={() => toggleVoiceInput()}
+                        >
+                          ✓ Done
+                        </button>
+                        <button className="link-btn" onClick={cancelVoiceInput}>
+                          Cancel
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -1398,10 +1678,10 @@ export default function Dashboard() {
                   <button
                     type="button"
                     className={`voice-mic-btn ${listening ? "listening" : ""}`}
-                    onClick={() => toggleVoiceInput(true)}
+                    onClick={() => toggleVoiceInput()}
                     disabled={busy}
-                    title={listening ? "Stop voice input" : "Speak your question (Voice Input)"}
-                    aria-label={listening ? "Stop voice input" : "Speak your question"}
+                    title={listening ? "Finish speaking" : "Speak your question (Voice Input)"}
+                    aria-label={listening ? "Finish speaking" : "Speak your question"}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="9" y="2" width="6" height="12" rx="3" />

@@ -1,22 +1,58 @@
 /**
- * Multi-Tier Local Voice Engine (Kokoro-82M In-Browser Neural TTS + Voicebox.sh Bridge + Whisper/Native STT):
+ * Multi-Tier Local Voice Engine (Piper TTS + Kokoro-82M + Voicebox.sh Bridge + Persistent Mic STT):
  *
- * Tier 1 — Voicebox.sh Local Studio Bridge (`http://127.0.0.1:17493`):
- *   - Connects to the user's local Voicebox desktop studio if running (`GET /profiles`, `POST /generate` or `/speak`, `POST /transcribe`).
+ * Tier 1 — Piper Neural TTS (`@mintplex-labs/piper-tts-web` · WASM + OPFS cached):
+ *   - Fast, lightweight (~18MB–40MB) on-device neural speech synthesis that runs in a Web Worker and caches models in OPFS.
+ *   - Supports English, Spanish, French, German, Portuguese, Italian, and Arabic neural voices.
+ *
+ * Tier 2 — Voicebox.sh Local Studio Bridge (`http://127.0.0.1:17493`):
+ *   - Connects to the user's local Voicebox desktop studio if running (`GET /profiles`, `POST /generate`).
  *   - Supports custom cloned voice profiles.
  *
- * Tier 2 — In-Browser Kokoro-82M Neural TTS (`onnx-community/Kokoro-82M-v1.0-ONNX` via `kokoro-js`):
- *   - Studio-grade 82M-parameter neural TTS running 100% inside the browser via WebGPU / WASM (`q8` quantized).
- *   - Includes curated natural voices (`af_heart`, `af_bella`, `af_nicole`, `am_adam`, `am_michael`, `bf_emma`, `bm_george`).
+ * Tier 3 — In-Browser Kokoro-82M Neural TTS (`onnx-community/Kokoro-82M-v1.0-ONNX` via `kokoro-js`):
+ *   - Studio-grade 82M-parameter neural TTS running inside the browser via WebGPU / WASM (`q8` quantized).
  *
- * Tier 3 — OS System Speech (`window.speechSynthesis`):
- *   - Zero-download instant fallback for mobile battery-saver mode or non-English languages when Voicebox isn't running.
+ * Tier 4 — OS System Speech (`window.speechSynthesis`):
+ *   - Zero-download instant fallback with configurable OS voice picker, speaking speed (`0.7x – 1.4x`), and pitch.
  *
- * Speech-to-Text (STT):
- *   - Supports Voicebox `/transcribe` (when Voicebox mode is active), live browser `SpeechRecognition`, and on-device `Xenova/whisper-tiny`.
+ * Speech-to-Text (STT) — Persistent Active Recording:
+ *   - Requests real microphone permission (`getUserMedia`) first and keeps the session open (`continuous = true` + auto-restart on early browser silence)
+ *     so the microphone NEVER shuts off prematurely while you are thinking or pausing between phrases.
+ *   - Automatically falls back to 100% on-device `Xenova/whisper-tiny` (16kHz WebAudio) if native `SpeechRecognition` is blocked or offline.
  */
 
 import { useApp, type ChatbotConfig } from "./store";
+
+export interface PiperVoiceOption {
+  id: string;
+  label: string;
+  language: string;
+}
+
+export const PIPER_VOICES: PiperVoiceOption[] = [
+  { id: "en_US-hfc_female-medium", label: "HFC Female (Natural Conversational · Default)", language: "English" },
+  { id: "en_US-lessac-medium", label: "Lessac (Warm Expressive Female)", language: "English" },
+  { id: "en_US-ryan-medium", label: "Ryan (Clear Studio Male)", language: "English" },
+  { id: "en_US-amy-medium", label: "Amy (Friendly Assistant Female)", language: "English" },
+  { id: "en_GB-alba-medium", label: "Alba (British Female)", language: "English" },
+  { id: "en_GB-cori-medium", label: "Cori (British Narrator)", language: "English" },
+  { id: "es_ES-sharvard-medium", label: "Sharvard (Spanish Neural)", language: "Spanish" },
+  { id: "fr_FR-upmc-medium", label: "UPMC (French Neural)", language: "French" },
+  { id: "de_DE-thorsten-medium", label: "Thorsten (German Neural)", language: "German" },
+  { id: "pt_BR-faber-medium", label: "Faber (Portuguese Neural)", language: "Portuguese" },
+  { id: "it_IT-riccardo-x_low", label: "Riccardo (Italian Neural)", language: "Italian" },
+  { id: "ar_JO-kareem-medium", label: "Kareem (Arabic Neural)", language: "Arabic" },
+];
+
+const DEFAULT_PIPER_BY_LANG: Record<string, string> = {
+  English: "en_US-hfc_female-medium",
+  Spanish: "es_ES-sharvard-medium",
+  French: "fr_FR-upmc-medium",
+  German: "de_DE-thorsten-medium",
+  Portuguese: "pt_BR-faber-medium",
+  Italian: "it_IT-riccardo-x_low",
+  Arabic: "ar_JO-kareem-medium",
+};
 
 export interface KokoroVoiceOption {
   id: string;
@@ -37,6 +73,13 @@ export const KOKORO_VOICES: KokoroVoiceOption[] = [
 export interface VoiceboxProfile {
   id: string;
   name: string;
+}
+
+export interface SystemVoiceOption {
+  uri: string;
+  name: string;
+  lang: string;
+  local: boolean;
 }
 
 const LANG_BCP47: Record<string, string> = {
@@ -68,6 +111,17 @@ const WHISPER_LANG: Record<string, string> = {
   Italian: "italian",
   Arabic: "arabic",
 };
+
+export function getAvailableSystemVoices(): SystemVoiceOption[] {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return [];
+  const raw = window.speechSynthesis.getVoices() || [];
+  return raw.map((v) => ({
+    uri: v.voiceURI,
+    name: v.name,
+    lang: v.lang,
+    local: Boolean(v.localService),
+  }));
+}
 
 /**
  * Cleans an assistant response before speaking aloud so citation numbers (`[1: Page 3]`)
@@ -110,7 +164,7 @@ export function stopSpeaking(): void {
   }
 }
 
-function playAudioBlob(blob: Blob): Promise<void> {
+function playAudioBlob(blob: Blob, playbackRate = 1.0): Promise<void> {
   return new Promise((resolve, reject) => {
     if (speechAborted) {
       resolve();
@@ -119,6 +173,7 @@ function playAudioBlob(blob: Blob): Promise<void> {
     const url = URL.createObjectURL(blob);
     activeAudioUrl = url;
     const audio = new Audio(url);
+    audio.playbackRate = Math.max(0.6, Math.min(1.6, playbackRate || 1.0));
     activeAudioElement = audio;
     audio.onended = () => {
       if (activeAudioUrl === url) {
@@ -138,6 +193,67 @@ function playAudioBlob(blob: Blob): Promise<void> {
     };
     audio.play().catch(reject);
   });
+}
+
+/**
+ * Tier 1: Piper Neural TTS (`@mintplex-labs/piper-tts-web`).
+ * Runs in a dedicated Web Worker, caches ONNX voice models inside OPFS, and streams sentence-by-sentence.
+ */
+async function speakViaPiper(
+  cleanText: string,
+  chatbot: ChatbotConfig,
+  onStatus?: (msg: string) => void,
+  onStart?: () => void
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  try {
+    const piper = await import("@mintplex-labs/piper-tts-web");
+    const { ragSettings } = useApp.getState();
+    const speed = ragSettings.voiceSpeed || 1.0;
+
+    // Select configured Piper voice or auto-match the chatbot's response language
+    let voiceId = ragSettings.piperVoiceId || "en_US-hfc_female-medium";
+    if (chatbot.language !== "English" && voiceId.startsWith("en_")) {
+      voiceId = DEFAULT_PIPER_BY_LANG[chatbot.language] || voiceId;
+    }
+
+    const sentences =
+      cleanText
+        .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+        ?.map((s) => s.trim())
+        .filter((s) => s.length > 1) ?? [cleanText];
+
+    let started = false;
+    for (const sent of sentences) {
+      if (speechAborted) break;
+      if (!started) {
+        onStatus?.(`Synthesizing with Piper Neural TTS (${voiceId})…`);
+      }
+      const wavBlob = await piper.predict(
+        {
+          text: sent,
+          voiceId,
+        },
+        (prog) => {
+          if (!started && prog.total > 0) {
+            const pct = Math.round((prog.loaded * 100) / prog.total);
+            onStatus?.(`Caching Piper neural voice in OPFS (${pct}%)…`);
+          }
+        }
+      );
+
+      if (speechAborted) break;
+      if (!started) {
+        started = true;
+        onStatus?.("");
+        onStart?.();
+      }
+      await playAudioBlob(wavBlob, speed);
+    }
+    return started;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -167,10 +283,11 @@ export async function probeVoiceboxServer(baseUrl?: string): Promise<{
   }
 }
 
-async function speakViaVoicebox(cleanText: string, chatbot: ChatbotConfig): Promise<boolean> {
+async function speakViaVoicebox(cleanText: string, chatbot: ChatbotConfig, onStart?: () => void): Promise<boolean> {
   const { ragSettings } = useApp.getState();
   const baseUrl = (ragSettings.voiceboxUrl || "http://127.0.0.1:17493").replace(/\/+$/, "");
   const langIso = LANG_ISO[chatbot.language] || "en";
+  const rate = ragSettings.voiceSpeed || 1.0;
 
   try {
     const ctrl = new AbortController();
@@ -195,7 +312,8 @@ async function speakViaVoicebox(cleanText: string, chatbot: ChatbotConfig): Prom
     const contentType = res.headers.get("content-type") || "";
     if (contentType.includes("audio/") || contentType.includes("octet-stream")) {
       const audioBlob = await res.blob();
-      await playAudioBlob(audioBlob);
+      onStart?.();
+      await playAudioBlob(audioBlob, rate);
       return true;
     }
 
@@ -206,7 +324,8 @@ async function speakViaVoicebox(cleanText: string, chatbot: ChatbotConfig): Prom
       );
       if (audioRes.ok) {
         const audioBlob = await audioRes.blob();
-        await playAudioBlob(audioBlob);
+        onStart?.();
+        await playAudioBlob(audioBlob, rate);
         return true;
       }
     }
@@ -234,7 +353,6 @@ async function getKokoroTts(onStatus?: (msg: string) => void) {
         });
         return tts;
       } catch {
-        // Fallback to wasm if webgpu dtype combination fails on a specific adapter
         try {
           const { KokoroTTS } = await import("kokoro-js");
           return await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
@@ -260,8 +378,10 @@ async function speakViaKokoro(
   const tts = await getKokoroTts(onStatus);
   if (!tts || speechAborted) return false;
 
-  const voiceId = useApp.getState().ragSettings.kokoroVoiceId || "af_heart";
-  // Split into natural sentence groups (~240 chars) so playback starts quickly and streams smoothly
+  const { ragSettings } = useApp.getState();
+  const voiceId = ragSettings.kokoroVoiceId || "af_heart";
+  const speed = ragSettings.voiceSpeed || 1.0;
+
   const sentences =
     cleanText
       .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
@@ -273,7 +393,7 @@ async function speakViaKokoro(
     if (speechAborted) break;
     onStatus?.(started ? "Speaking (Kokoro-82M Neural)…" : "Synthesizing neural voice…");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const audioResult: any = await tts.generate(sent, { voice: voiceId });
+    const audioResult: any = await tts.generate(sent, { voice: voiceId, speed });
     if (speechAborted) break;
 
     const blob: Blob =
@@ -285,7 +405,7 @@ async function speakViaKokoro(
       started = true;
       onStart?.();
     }
-    await playAudioBlob(blob);
+    await playAudioBlob(blob, 1.0);
   }
   return started;
 }
@@ -300,33 +420,45 @@ function speakViaBrowserSynthesis(
     return;
   }
 
+  const { ragSettings } = useApp.getState();
   const utter = new SpeechSynthesisUtterance(cleanText);
   const targetLang = LANG_BCP47[chatbot.language] || "en-US";
   utter.lang = targetLang;
 
+  const baseRate = ragSettings.voiceSpeed || 1.0;
+  const basePitch = ragSettings.voicePitch || 1.0;
+
   if (chatbot.personality === "concise") {
-    utter.rate = 1.08;
-    utter.pitch = 1.0;
+    utter.rate = Math.min(1.6, baseRate * 1.05);
+    utter.pitch = basePitch;
   } else if (chatbot.personality === "friendly") {
-    utter.rate = 1.02;
-    utter.pitch = 1.05;
+    utter.rate = baseRate;
+    utter.pitch = Math.min(1.4, basePitch * 1.03);
   } else if (chatbot.personality === "academic") {
-    utter.rate = 0.96;
-    utter.pitch = 0.96;
+    utter.rate = Math.max(0.6, baseRate * 0.96);
+    utter.pitch = basePitch;
   } else {
-    utter.rate = 1.0;
-    utter.pitch = 1.0;
+    utter.rate = baseRate;
+    utter.pitch = basePitch;
   }
 
   const voices = window.speechSynthesis.getVoices();
-  const langPrefix = targetLang.slice(0, 2).toLowerCase();
-  const matchingVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
-  const preferredVoice =
-    matchingVoices.find((v) => /natural|neural|siri|premium|enhanced|google/i.test(v.name)) ||
-    matchingVoices.find((v) => v.localService) ||
-    matchingVoices[0];
+  const customVoice = ragSettings.systemVoiceURI
+    ? voices.find((v) => v.voiceURI === ragSettings.systemVoiceURI)
+    : undefined;
 
-  if (preferredVoice) utter.voice = preferredVoice;
+  if (customVoice) {
+    utter.voice = customVoice;
+    utter.lang = customVoice.lang;
+  } else {
+    const langPrefix = targetLang.slice(0, 2).toLowerCase();
+    const matchingVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
+    const preferredVoice =
+      matchingVoices.find((v) => /natural|neural|siri|premium|enhanced|google/i.test(v.name)) ||
+      matchingVoices.find((v) => v.localService) ||
+      matchingVoices[0];
+    if (preferredVoice) utter.voice = preferredVoice;
+  }
 
   utter.onstart = () => callbacks?.onStart?.();
   utter.onend = () => callbacks?.onEnd?.();
@@ -336,10 +468,11 @@ function speakViaBrowserSynthesis(
 }
 
 /**
- * Speaks an assistant response using the configured 3-tier voice pipeline:
- * 1. Voicebox.sh Local Studio (`http://127.0.0.1:17493`) if selected or running in auto mode.
- * 2. Kokoro-82M In-Browser Neural TTS (`onnx-community/Kokoro-82M-v1.0-ONNX`).
- * 3. Instant OS Browser Speech (`window.speechSynthesis`) fallback.
+ * Speaks an assistant response using the configured voice pipeline:
+ * - `piper` (or `auto`): Runs Piper Neural TTS (`@mintplex-labs/piper-tts-web`) cached in OPFS.
+ * - `voicebox`: Connects to local Voicebox.sh studio (`http://127.0.0.1:17493`).
+ * - `kokoro`: Runs Kokoro-82M Neural ONNX in-browser.
+ * - `browser`: Instant OS Speech Synthesis fallback.
  */
 export async function speakAnswer(
   text: string,
@@ -356,13 +489,12 @@ export async function speakAnswer(
   }
 
   const { ragSettings } = useApp.getState();
-  const engineMode = ragSettings.voiceEngine || "auto";
-  const isMobile = typeof window !== "undefined" && window.innerWidth <= 960;
+  const engineMode = ragSettings.voiceEngine || "piper";
 
-  // 1. Try Voicebox.sh desktop server if explicitly chosen or in Desktop Auto mode
-  if (engineMode === "voicebox" || (engineMode === "auto" && !isMobile)) {
-    callbacks?.onStatus?.("Checking local Voicebox studio…");
-    const ok = await speakViaVoicebox(clean, chatbot);
+  // 1. Voicebox.sh Local Studio if selected
+  if (engineMode === "voicebox") {
+    callbacks?.onStatus?.("Connecting to local Voicebox studio…");
+    const ok = await speakViaVoicebox(clean, chatbot, callbacks?.onStart);
     if (ok) {
       callbacks?.onStatus?.("");
       callbacks?.onEnd?.();
@@ -370,11 +502,18 @@ export async function speakAnswer(
     }
   }
 
-  // 2. Try In-Browser Kokoro-82M Neural TTS if chosen or in Desktop Auto mode (for English)
-  if (
-    !speechAborted &&
-    (engineMode === "kokoro" || (engineMode === "auto" && !isMobile && chatbot.language === "English"))
-  ) {
+  // 2. Piper Neural TTS (Default for voice-to-voice conversation & multilingual OPFS neural synthesis)
+  if (!speechAborted && (engineMode === "piper" || engineMode === "auto")) {
+    const ok = await speakViaPiper(clean, chatbot, callbacks?.onStatus, callbacks?.onStart);
+    if (ok) {
+      callbacks?.onStatus?.("");
+      callbacks?.onEnd?.();
+      return;
+    }
+  }
+
+  // 3. Kokoro-82M In-Browser Neural TTS
+  if (!speechAborted && (engineMode === "kokoro" || (engineMode === "auto" && chatbot.language === "English"))) {
     try {
       const ok = await speakViaKokoro(clean, callbacks?.onStatus, callbacks?.onStart);
       if (ok) {
@@ -387,7 +526,7 @@ export async function speakAnswer(
     }
   }
 
-  // 3. Fallback (or mobile battery-saver default): OS Native Speech Synthesis
+  // 4. Fallback: OS System Speech Synthesis
   callbacks?.onStatus?.("");
   if (!speechAborted) {
     speakViaBrowserSynthesis(clean, chatbot, callbacks);
@@ -416,97 +555,10 @@ async function getWhisperTranscriber(onProgress?: (msg: string) => void) {
 
 export interface VoiceRecorderSession {
   stop: () => void;
+  cancel: () => void;
 }
 
 export async function startVoiceInput(options: {
-  language: string;
-  onInterim: (text: string) => void;
-  onFinal: (text: string) => void;
-  onStatus?: (status: string) => void;
-  onError: (err: string) => void;
-}): Promise<VoiceRecorderSession> {
-  const bcp47 = LANG_BCP47[options.language] || "en-US";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const SpeechRec = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
-
-  if (SpeechRec) {
-    try {
-      const rec = new SpeechRec();
-      rec.lang = bcp47;
-      rec.continuous = false;
-      rec.interimResults = true;
-      rec.maxAlternatives = 1;
-
-      let finalTranscript = "";
-      let latestInterim = "";
-      let handled = false;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      rec.onresult = (event: any) => {
-        let interim = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0]?.transcript || "";
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + " ";
-          } else {
-            interim += transcript;
-          }
-        }
-        latestInterim = (finalTranscript + interim).trim();
-        if (latestInterim) options.onInterim(latestInterim);
-      };
-
-      rec.onend = () => {
-        if (handled) return;
-        handled = true;
-        const result = (finalTranscript || latestInterim).trim();
-        options.onFinal(result);
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      rec.onerror = async (ev: any) => {
-        if (handled) return;
-        const code = ev?.error || "";
-        if (code === "network" || code === "service-not-allowed") {
-          handled = true;
-          try {
-            const fallbackSession = await startWhisperRecording(options);
-            activeStop = fallbackSession.stop;
-          } catch (e) {
-            options.onError((e as Error).message || "Microphone error");
-          }
-          return;
-        }
-        handled = true;
-        if (code === "not-allowed" || code === "permission-denied") {
-          options.onError("Microphone permission denied.");
-        } else if (code === "no-speech") {
-          options.onFinal("");
-        } else {
-          options.onError(`Voice input error: ${code || "unavailable"}`);
-        }
-      };
-
-      let activeStop = () => {
-        try {
-          rec.stop();
-        } catch {}
-      };
-
-      rec.start();
-      options.onStatus?.("Listening… Speak now");
-      return {
-        stop: () => activeStop(),
-      };
-    } catch {
-      // Fall through to on-device Whisper recording below
-    }
-  }
-
-  return startWhisperRecording(options);
-}
-
-async function startWhisperRecording(options: {
   language: string;
   onInterim: (text: string) => void;
   onFinal: (text: string) => void;
@@ -522,39 +574,191 @@ async function startWhisperRecording(options: {
       echoCancellation: true,
       noiseSuppression: true,
       channelCount: 1,
-      sampleRate: 16000,
     },
   });
 
+  const bcp47 = LANG_BCP47[options.language] || "en-US";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SpeechRec = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
+
+  if (SpeechRec) {
+    try {
+      const rec = new SpeechRec();
+      rec.lang = bcp47;
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+
+      let accumulatedFinal = "";
+      let currentInterim = "";
+      let userStopped = false;
+      let switchedToWhisper = false;
+      let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+      let activeWhisperSession: VoiceRecorderSession | null = null;
+
+      const releaseMicStream = () => {
+        if (silenceTimer) {
+          clearTimeout(silenceTimer);
+          silenceTimer = null;
+        }
+        stream.getTracks().forEach((t) => t.stop());
+      };
+
+      const finishAndSubmit = () => {
+        if (userStopped) return;
+        userStopped = true;
+        releaseMicStream();
+        try {
+          rec.stop();
+        } catch {}
+        const fullText = (accumulatedFinal + " " + currentInterim).replace(/\s+/g, " ").trim();
+        options.onFinal(fullText);
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rec.onresult = (event: any) => {
+        let interim = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0]?.transcript || "";
+          if (event.results[i].isFinal) {
+            accumulatedFinal += " " + transcript;
+          } else {
+            interim += transcript;
+          }
+        }
+        currentInterim = interim;
+        const combined = (accumulatedFinal + " " + currentInterim).replace(/\s+/g, " ").trim();
+        if (combined) {
+          options.onInterim(combined);
+          options.onStatus?.("Listening… (Tap mic when done, or pause 2.5s to send)");
+          if (silenceTimer) clearTimeout(silenceTimer);
+          silenceTimer = setTimeout(() => {
+            if (!userStopped && combined.length > 0) {
+              finishAndSubmit();
+            }
+          }, 2600);
+        }
+      };
+
+      rec.onend = () => {
+        if (userStopped || switchedToWhisper) return;
+        try {
+          rec.start();
+        } catch {
+          finishAndSubmit();
+        }
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rec.onerror = async (ev: any) => {
+        if (userStopped || switchedToWhisper) return;
+        const code = ev?.error || "";
+
+        if (code === "no-speech") {
+          options.onStatus?.("Listening… Speak into your microphone");
+          return;
+        }
+
+        if (code === "network" || code === "service-not-allowed" || code === "audio-capture" || code === "aborted") {
+          switchedToWhisper = true;
+          try {
+            rec.stop();
+          } catch {}
+          try {
+            activeWhisperSession = await startWhisperRecordingFromStream(stream, options);
+          } catch (e) {
+            releaseMicStream();
+            options.onError((e as Error).message || "Microphone error");
+          }
+          return;
+        }
+
+        userStopped = true;
+        releaseMicStream();
+        if (code === "not-allowed" || code === "permission-denied") {
+          options.onError("Microphone permission denied.");
+        } else {
+          options.onError(`Voice input error: ${code || "unavailable"}`);
+        }
+      };
+
+      rec.start();
+      options.onStatus?.("Listening… Speak now (Tap mic when finished)");
+
+      return {
+        stop: () => {
+          if (activeWhisperSession) {
+            activeWhisperSession.stop();
+            return;
+          }
+          finishAndSubmit();
+        },
+        cancel: () => {
+          if (activeWhisperSession) {
+            activeWhisperSession.cancel();
+            return;
+          }
+          userStopped = true;
+          releaseMicStream();
+          try {
+            rec.stop();
+          } catch {}
+          options.onFinal("");
+        },
+      };
+    } catch {
+      // Fall through to on-device Whisper recording using the already-opened stream
+    }
+  }
+
+  return startWhisperRecordingFromStream(stream, options);
+}
+
+async function startWhisperRecordingFromStream(
+  stream: MediaStream,
+  options: {
+    language: string;
+    onInterim: (text: string) => void;
+    onFinal: (text: string) => void;
+    onStatus?: (status: string) => void;
+    onError: (err: string) => void;
+  }
+): Promise<VoiceRecorderSession> {
   const audioCtx = new AudioContext({ sampleRate: 16000 });
   const source = audioCtx.createMediaStreamSource(stream);
   const processor = audioCtx.createScriptProcessor(4096, 1, 1);
   const pcmChunks: Float32Array[] = [];
+  const startTime = Date.now();
 
   processor.onaudioprocess = (e) => {
     const input = e.inputBuffer.getChannelData(0);
     pcmChunks.push(new Float32Array(input));
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    options.onStatus?.(`Recording audio (${secs}s)… Tap mic when finished`);
   };
 
   source.connect(processor);
   processor.connect(audioCtx.destination);
-  options.onStatus?.("Recording (On-device Whisper)… Tap mic to finish");
+  options.onStatus?.("Recording audio (0s)… Tap mic when finished");
 
   let stopped = false;
 
-  const stop = async () => {
-    if (stopped) return;
-    stopped = true;
-
+  const cleanupAudio = async () => {
     try {
       processor.disconnect();
       source.disconnect();
     } catch {}
     stream.getTracks().forEach((t) => t.stop());
     await audioCtx.close().catch(() => {});
+  };
+
+  const stop = async () => {
+    if (stopped) return;
+    stopped = true;
+    await cleanupAudio();
 
     const totalLen = pcmChunks.reduce((acc, c) => acc + c.length, 0);
-    if (totalLen < 3200) {
+    if (totalLen < 2400) {
       options.onFinal("");
       return;
     }
@@ -567,7 +771,7 @@ async function startWhisperRecording(options: {
     }
 
     try {
-      options.onStatus?.("Transcribing locally with Whisper…");
+      options.onStatus?.("Transcribing speech locally with Whisper…");
       const transcriber = await getWhisperTranscriber(options.onStatus);
       const whisperLang = WHISPER_LANG[options.language] || "english";
       const out = await transcriber(merged, {
@@ -581,5 +785,12 @@ async function startWhisperRecording(options: {
     }
   };
 
-  return { stop };
+  const cancel = async () => {
+    if (stopped) return;
+    stopped = true;
+    await cleanupAudio();
+    options.onFinal("");
+  };
+
+  return { stop, cancel };
 }

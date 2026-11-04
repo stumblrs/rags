@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",
+    "@mintplex-labs/piper-tts-web": "^1.0.5",
     "@mlc-ai/web-llm": "^0.2.87",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",

@@ -10,13 +10,23 @@ import {
   type StorageBreakdown,
 } from "@/lib/backup";
 import { detectHardwareAndSelectModel, ensureLlmEngine, hasWebGPU, SUPPORTED_LLMS } from "@/lib/ai";
-import { KOKORO_VOICES, probeVoiceboxServer, type VoiceboxProfile } from "@/lib/voice";
+import {
+  getAvailableSystemVoices,
+  KOKORO_VOICES,
+  PIPER_VOICES,
+  probeVoiceboxServer,
+  speakAnswer,
+  stopSpeaking,
+  type SystemVoiceOption,
+  type VoiceboxProfile,
+} from "@/lib/voice";
 import { useApp, type VoiceEngineMode } from "@/lib/store";
 
 export default function StorageSettingsModal() {
   const {
     activeModal,
     openModal,
+    chatbot,
     ragSettings,
     setRagSettings,
     hardware,
@@ -35,11 +45,14 @@ export default function StorageSettingsModal() {
   const [showPerDoc, setShowPerDoc] = useState(false);
   const [voiceboxOnline, setVoiceboxOnline] = useState<boolean | null>(null);
   const [voiceboxProfiles, setVoiceboxProfiles] = useState<VoiceboxProfile[]>([]);
+  const [systemVoices, setSystemVoices] = useState<SystemVoiceOption[]>([]);
+  const [testingVoice, setTestingVoice] = useState(false);
   const [passphrase, setPassphrase] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     setInfo(await getStorageBreakdown());
+    setSystemVoices(getAvailableSystemVoices());
     const vb = await probeVoiceboxServer();
     setVoiceboxOnline(vb.online);
     setVoiceboxProfiles(vb.profiles);
@@ -50,6 +63,14 @@ export default function StorageSettingsModal() {
       refresh();
       setConfirmWipe(false);
       setConfirmClearChats(false);
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          setSystemVoices(getAvailableSystemVoices());
+        };
+      }
+    } else {
+      stopSpeaking();
+      setTestingVoice(false);
     }
   }, [activeModal]);
 
@@ -195,33 +216,58 @@ export default function StorageSettingsModal() {
               </div>
             </div>
 
-            {/* Neural Voice Engine (Kokoro-82M In-Browser + Voicebox.sh Local Studio Bridge) */}
+            {/* Neural Voice Synthesis & Speech Studio (Piper TTS + Kokoro-82M + Voicebox.sh + System Voice) */}
             <div className="model-card" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
                   <b>
-                    Voice Synthesis Engine ·{" "}
+                    Voice Synthesis &amp; Speech Configuration ·{" "}
                     {voiceboxOnline
                       ? "Voicebox.sh Studio Connected (127.0.0.1:17493)"
-                      : "Kokoro-82M Neural ONNX + System Speech"}
+                      : "Piper Neural TTS (OPFS) + Kokoro-82M + System Speech"}
                   </b>
                   <span>
-                    Supports in-browser <b>Kokoro-82M Neural TTS</b> (~80MB q8), local <b>Voicebox.sh</b> studio bridge (with custom cloned voices), and zero-latency OS speech
+                    When you ask a question using the mic, your assistant automatically talks back using Piper Neural TTS
                   </span>
                 </div>
-                <span className="badge-pill">
-                  {voiceboxOnline ? "Voicebox Online" : (ragSettings.voiceEngine || "auto").toUpperCase()}
-                </span>
+                <button
+                  className={testingVoice ? "btn-danger" : "btn-neon"}
+                  onClick={() => {
+                    if (testingVoice) {
+                      stopSpeaking();
+                      setTestingVoice(false);
+                      return;
+                    }
+                    setTestingVoice(true);
+                    speakAnswer(
+                      `Hello! I am ${chatbot.name}, your private local AI assistant. Whenever you speak to me with the microphone, I will talk right back to you.`,
+                      chatbot,
+                      {
+                        onStatus: (st) => {
+                          if (st) setStatusMsg(st);
+                        },
+                        onStart: () => setStatusMsg("Playing voice preview…"),
+                        onEnd: () => {
+                          setTestingVoice(false);
+                          setStatusMsg(null);
+                        },
+                      }
+                    );
+                  }}
+                >
+                  {testingVoice ? "⏹ Stop Preview" : "🔊 Test Voice"}
+                </button>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <select
                   className="select-field"
-                  value={ragSettings.voiceEngine || "auto"}
+                  value={ragSettings.voiceEngine || "piper"}
                   onChange={(e) => setRagSettings({ voiceEngine: e.target.value as VoiceEngineMode })}
                   title="Choose voice synthesis engine"
                 >
-                  <option value="auto">Engine: Smart Auto (Voicebox → Kokoro-82M → OS)</option>
+                  <option value="piper">Engine: Piper Neural TTS (OPFS · Fast &amp; Multilingual)</option>
+                  <option value="auto">Engine: Smart Auto (Voicebox → Piper → Kokoro → OS)</option>
                   <option value="kokoro">Engine: Kokoro-82M In-Browser Neural TTS</option>
                   <option value="voicebox">Engine: Voicebox.sh Local Studio (127.0.0.1:17493)</option>
                   <option value="browser">Engine: OS System Voice (0MB · Battery Saver)</option>
@@ -260,14 +306,28 @@ export default function StorageSettingsModal() {
                         setStatusMsg(
                           vb.online
                             ? `Connected to Voicebox.sh (${vb.profiles.length} voice profile(s) found).`
-                            : "Voicebox.sh desktop server not detected on port 17493. Falling back to in-browser Kokoro-82M."
+                            : "Voicebox.sh desktop server not detected on port 17493. Falling back to in-browser Piper Neural TTS."
                         );
                       }}
                     >
                       Probe
                     </button>
                   </div>
-                ) : (
+                ) : ragSettings.voiceEngine === "browser" ? (
+                  <select
+                    className="select-field"
+                    value={ragSettings.systemVoiceURI || ""}
+                    onChange={(e) => setRagSettings({ systemVoiceURI: e.target.value })}
+                    title="Select OS system speech synthesis voice"
+                  >
+                    <option value="">Auto-Match Best OS Voice ({chatbot.language})</option>
+                    {systemVoices.map((sv) => (
+                      <option key={sv.uri} value={sv.uri}>
+                        {sv.name} ({sv.lang}{sv.local ? " · Local" : ""})
+                      </option>
+                    ))}
+                  </select>
+                ) : ragSettings.voiceEngine === "kokoro" ? (
                   <select
                     className="select-field"
                     value={ragSettings.kokoroVoiceId || "af_heart"}
@@ -280,7 +340,74 @@ export default function StorageSettingsModal() {
                       </option>
                     ))}
                   </select>
+                ) : (
+                  <select
+                    className="select-field"
+                    value={ragSettings.piperVoiceId || "en_US-hfc_female-medium"}
+                    onChange={(e) => setRagSettings({ piperVoiceId: e.target.value })}
+                    title="Select Piper neural voice model (cached in OPFS)"
+                  >
+                    {PIPER_VOICES.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        Piper Voice: {v.label} ({v.language})
+                      </option>
+                    ))}
+                  </select>
                 )}
+              </div>
+
+              {/* Speed, Pitch & Mic Reply Style Controls */}
+              <div className="stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginTop: 2 }}>
+                <div className="stat-box">
+                  <span>Speaking Speed: <b>{(ragSettings.voiceSpeed ?? 1.0).toFixed(2)}x</b></span>
+                  <input
+                    type="range"
+                    min={0.7}
+                    max={1.4}
+                    step={0.05}
+                    value={ragSettings.voiceSpeed ?? 1.0}
+                    onChange={(e) => setRagSettings({ voiceSpeed: Number(e.target.value) })}
+                  />
+                  <small>Applies to Piper, Kokoro, Voicebox &amp; OS</small>
+                </div>
+
+                <div className="stat-box">
+                  <span>Voice Pitch: <b>{(ragSettings.voicePitch ?? 1.0).toFixed(2)}</b></span>
+                  <input
+                    type="range"
+                    min={0.75}
+                    max={1.25}
+                    step={0.05}
+                    value={ragSettings.voicePitch ?? 1.0}
+                    onChange={(e) => setRagSettings({ voicePitch: Number(e.target.value) })}
+                  />
+                  <small>Tunes OS speech pitch cadence</small>
+                </div>
+
+                <div className="stat-box" style={{ justifyContent: "space-between", gap: 4 }}>
+                  <span>When I Use the Mic</span>
+                  <select
+                    className="select-field"
+                    style={{ padding: "4px 8px", fontSize: 11.5 }}
+                    value={ragSettings.voiceResponseMode || "spoken_bubble"}
+                    onChange={(e) =>
+                      setRagSettings({
+                        voiceResponseMode: e.target.value as "spoken_bubble" | "spoken_and_text",
+                      })
+                    }
+                  >
+                    <option value="spoken_bubble">Talk Back (Audio Bubble Only)</option>
+                    <option value="spoken_and_text">Talk Back + Full Text</option>
+                  </select>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-0)" }}>
+                    <input
+                      type="checkbox"
+                      checked={ragSettings.autoSendVoice ?? true}
+                      onChange={(e) => setRagSettings({ autoSendVoice: e.target.checked })}
+                    />
+                    Auto-send after speaking
+                  </label>
+                </div>
               </div>
             </div>
           </div>
