@@ -240,10 +240,29 @@ button { cursor: pointer; }
   margin: 0 auto 8px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.chat-scope-scroll {
+  display: flex;
+  align-items: center;
   gap: 6px;
   overflow-x: auto;
   padding-bottom: 2px;
   scrollbar-width: none;
+  flex: 1;
+  min-width: 0;
+}
+.chat-scope-scroll::-webkit-scrollbar {
+  display: none;
+}
+.chat-scope-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  position: relative;
 }
 .chat-scope-label {
   font-size: 11.5px;
@@ -885,8 +904,45 @@ button { cursor: pointer; }
   /* Top App Bar (iOS Navigation Bar vs Android Material Top Bar) */
   .topbar {
     height: calc(54px + env(safe-area-inset-top, 0px));
-    padding: env(safe-area-inset-top, 0px) 14px 0;
-    gap: 8px;
+    padding: env(safe-area-inset-top, 0px) 10px 0;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .topbar-title {
+    min-width: 0;
+    flex-shrink: 1;
+    gap: 6px;
+  }
+  .topbar-title h1 {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90px;
+  }
+  .scope-pill {
+    max-width: 120px;
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+  .scope-pill b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80px;
+  }
+  .topbar-actions {
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .scope-dropdown {
+    width: min(320px, calc(100vw - 20px));
+    left: auto;
+    right: 0;
+  }
+  .voice-settings-popover {
+    width: min(320px, calc(100vw - 20px)) !important;
   }
   .app-shell.os-ios .topbar {
     background: rgba(15, 16, 22, 0.72);
@@ -984,12 +1040,64 @@ button { cursor: pointer; }
     transform: translateX(0);
   }
   .chat-feed {
-    padding: 14px 12px;
-    gap: 14px;
+    padding: 12px 10px;
+    gap: 12px;
   }
   .chat-card {
-    max-width: 86%;
-    padding: 11px 13px;
+    max-width: 90%;
+    padding: 10px 12px;
+  }
+  .chat-bubble-row {
+    gap: 8px;
+  }
+  .chat-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+  }
+  .voice-audio-bubble {
+    padding: 9px 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .voice-play-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 12px;
+  }
+  .voice-wave-bars {
+    height: 20px;
+    gap: 2px;
+  }
+  .voice-transcript-toggle {
+    padding: 3px 8px;
+    font-size: 10.5px;
+  }
+  .card-tools {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .card-tools button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  .citation-pills {
+    gap: 4px;
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+  .citation-pill {
+    padding: 3px 7px;
+    font-size: 10.5px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .citation-pill b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .app-shell.os-ios .chat-bubble-row.user .chat-card {
     border-radius: 18px 18px 4px 18px;
@@ -1002,7 +1110,48 @@ button { cursor: pointer; }
   }
 
   .chat-composer-bar {
-    padding: 8px 10px 10px;
+    padding: 6px 8px 8px;
+  }
+  .chat-scope-bar {
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .chat-scope-label {
+    display: none;
+  }
+  .chat-scope-actions .chip {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+  .voice-status-banner {
+    padding: 4px 8px;
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .chat-composer-inner {
+    padding: 4px 6px 4px 10px;
+    gap: 6px;
+  }
+  .voice-mic-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .chat-composer-inner .btn-primary {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .chat-composer-inner .btn-primary span {
+    display: none;
+  }
+  .thinking-box {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .thinking-title b {
+    font-size: 12px;
+  }
+  .thinking-step {
+    font-size: 11.5px;
   }
   /* 16px font-size prevents iOS Safari auto-zoom on input focus */
   .chat-composer-inner input,
@@ -1017,21 +1166,68 @@ button { cursor: pointer; }
   .doc-row {
     grid-template-columns: 20px 1fr;
     gap: 8px;
-    padding: 12px;
+    padding: 10px;
+  }
+  .doc-title {
+    font-size: 13px;
+    word-break: break-all;
   }
   .doc-space-select {
     grid-column: 1 / -1;
     width: 100%;
+    font-size: 13px;
   }
   .doc-actions {
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    gap: 4px;
   }
   .doc-actions button {
     text-align: center;
-    padding: 6px 4px;
+    padding: 5px 2px;
+    font-size: 11px;
+  }
+  .spaces-rail {
+    max-height: 48px;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    scrollbar-width: none;
+  }
+  .spaces-rail::-webkit-scrollbar {
+    display: none;
+  }
+  .space-item {
+    font-size: 12px;
+    padding: 5px 8px;
+  }
+  .docs-toolbar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .kpi-card {
+    padding: 10px 12px;
+  }
+  .kpi-val {
+    font-size: 18px;
+  }
+  .kpi-sub {
+    font-size: 10.5px;
+  }
+  .hero-banner {
+    padding: 14px;
+    gap: 10px;
+  }
+  .prompt-suggestions {
+    gap: 6px;
+  }
+  .prompt-chip {
+    font-size: 11px;
+    padding: 4px 8px;
   }
 
   .modal-backdrop {

@@ -952,9 +952,9 @@ export default function Dashboard() {
             {updateAvailable && (
               <div className="pwa-update-pill">
                 <span className="pwa-update-dot" />
-                <span className="pwa-update-text">New version available</span>
+                <span className="pwa-update-text">Update</span>
                 <button className="pwa-update-btn" onClick={applyAppUpdate} title="Reload to update">
-                  Update now
+                  Now
                 </button>
                 <button
                   className="pwa-update-dismiss"
@@ -1522,31 +1522,33 @@ export default function Dashboard() {
               <div className="chat-composer-bar">
                 {/* Active Document Filter Bar + Hands-Free Voice Toggle directly above the chat input */}
                 <div className="chat-scope-bar">
-                  {docs.length > 0 && (
-                    <>
-                      <span className="chat-scope-label">Searching in:</span>
-                      <button
-                        className={`chip ${selectedDocIds.length === 0 ? "active" : ""}`}
-                        onClick={clearSelectedDocs}
-                      >
-                        {activeSpaceName ? `All in #${activeSpaceName}` : `All Documents (${docs.length})`}
-                      </button>
-                      {scopedDocs.map((d) => {
-                        const active = selectedDocIds.includes(d.document_id);
-                        return (
-                          <button
-                            key={d.document_id}
-                            className={`chip ${active ? "active" : ""}`}
-                            onClick={() => toggleSelectedDoc(d.document_id)}
-                            title="Click to toggle searching only this document"
-                          >
-                            {active ? "✓ " : ""}{d.filename}
-                          </button>
-                        );
-                      })}
-                    </>
-                  )}
-                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+                  <div className="chat-scope-scroll">
+                    {docs.length > 0 && (
+                      <>
+                        <span className="chat-scope-label">In:</span>
+                        <button
+                          className={`chip ${selectedDocIds.length === 0 ? "active" : ""}`}
+                          onClick={clearSelectedDocs}
+                        >
+                          {activeSpaceName ? `#${activeSpaceName}` : `All (${docs.length})`}
+                        </button>
+                        {scopedDocs.map((d) => {
+                          const active = selectedDocIds.includes(d.document_id);
+                          return (
+                            <button
+                              key={d.document_id}
+                              className={`chip ${active ? "active" : ""}`}
+                              onClick={() => toggleSelectedDoc(d.document_id)}
+                              title="Click to toggle searching only this document"
+                            >
+                              {active ? "✓ " : ""}{d.filename}
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                  <div className="chat-scope-actions">
                     <button
                       className={`chip voice-mode-chip ${handsFreeVoice ? "active" : ""}`}
                       onClick={() => {
@@ -1558,7 +1560,7 @@ export default function Dashboard() {
                       }}
                       title="Hands-free voice conversation: speak your question, hear the grounded answer aloud, and continue talking automatically"
                     >
-                      {handsFreeVoice ? "🎙️ Live Voice: ON" : "🎙️ Hands-Free"}
+                      {handsFreeVoice ? "🎙️ ON" : "🎙️ Hands-Free"}
                     </button>
 
                     <button
@@ -1566,12 +1568,12 @@ export default function Dashboard() {
                       onClick={() => setVoiceConfigOpen((o) => !o)}
                       title="Configure voice synthesis engine, voice persona, speed, and pitch"
                     >
-                      🔊 Voice Settings ▾
+                      🔊 Voice ▾
                     </button>
 
                     {voiceConfigOpen && (
                       <div
-                        className="scope-dropdown"
+                        className="scope-dropdown voice-settings-popover"
                         style={{ right: 0, left: "auto", bottom: "calc(100% + 8px)", top: "auto", width: 320, zIndex: 70 }}
                         onClick={(e) => e.stopPropagation()}
                       >
