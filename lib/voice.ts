@@ -251,7 +251,8 @@ async function speakViaPiper(
       await playAudioBlob(wavBlob, speed);
     }
     return started;
-  } catch {
+  } catch (e) {
+    console.warn("Piper TTS synthesis failed, gracefully falling back to browser synthesis:", e);
     return false;
   }
 }
@@ -541,11 +542,15 @@ let whisperPromise: Promise<any> | null = null;
 async function getWhisperTranscriber(onProgress?: (msg: string) => void) {
   if (!whisperPromise) {
     whisperPromise = (async () => {
-      onProgress?.("Loading local Whisper speech model…");
+      onProgress?.("Loading local speech recognition model…");
       const { pipeline, env } = await import("@huggingface/transformers");
       env.allowLocalModels = false;
       env.useBrowserCache = true;
-      return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny", {
+      // Ensure onnxruntime-web loads wasm binaries from jsdelivr if bundled wasm fails
+      if (env.backends?.onnx?.wasm) {
+        env.backends.onnx.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/";
+      }
+      return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en", {
         dtype: "q8",
       });
     })();
@@ -664,9 +669,8 @@ export async function startVoiceInput(options: {
 
       rec.onend = () => {
         if (userStopped) return;
-        // If native speech recognition ended without producing any text, fall back to direct audio recording
         if (!speechReceived && !accumulatedFinal.trim()) {
-          startWhisperFallback("No speech captured by browser STT. Switching to direct audio…");
+          startWhisperFallback("Listening via direct audio recording…");
           return;
         }
         try {
@@ -680,12 +684,15 @@ export async function startVoiceInput(options: {
         if (userStopped) return;
         const code = ev?.error || "";
 
+        // If native browser STT gives no-speech, keep retrying or seamlessly switch to direct audio recording
         if (code === "no-speech") {
-          // If native STT times out on silence, switch to direct recording so user can speak whenever ready
-          startWhisperFallback("Listening… speak your question");
+          if (!speechReceived && !accumulatedFinal.trim()) {
+            startWhisperFallback("Listening… speak your question");
+          }
           return;
         }
 
+        // On mobile / offline network or permission glitches with cloud SpeechRec, fall back to hardware MediaRecorder
         if (
           code === "network" ||
           code === "service-not-allowed" ||
@@ -693,8 +700,7 @@ export async function startVoiceInput(options: {
           code === "aborted" ||
           code === "not-allowed"
         ) {
-          // If browser speech service fails (e.g. mobile Chrome network STT block), seamlessly fall back to MediaRecorder
-          startWhisperFallback("Using on-device audio recording…");
+          startWhisperFallback("Recording voice locally…");
           return;
         }
 
