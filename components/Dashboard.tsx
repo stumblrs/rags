@@ -78,6 +78,7 @@ export default function Dashboard() {
   const [mobilePlatform, setMobilePlatform] = useState<"ios" | "android" | "desktop">("desktop");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<any>(null);
 
   // Chat state
@@ -178,61 +179,67 @@ export default function Dashboard() {
     }
 
     if ("serviceWorker" in navigator) {
-      if (process.env.NODE_ENV === "production") {
-        navigator.serviceWorker
-          .register("/sw.js")
-          .then((reg) => {
-            // Check if there is already a waiting service worker
-            if (reg.waiting) {
-              waitingWorkerRef.current = reg.waiting;
-              setUpdateAvailable(true);
-            }
-
-            // Listen for newly installed updates
-            reg.addEventListener("updatefound", () => {
-              const newWorker = reg.installing;
-              if (!newWorker) return;
-              newWorker.addEventListener("statechange", () => {
-                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-                  waitingWorkerRef.current = newWorker;
-                  setUpdateAvailable(true);
-                }
-              });
-            });
-
-            // Periodically check for updates (every 45 minutes)
-            const updateInterval = setInterval(() => {
-              reg.update().catch(() => {});
-            }, 45 * 60 * 1000);
-
-            // Also check when user switches back to the tab/app
-            const onVisibility = () => {
-              if (document.visibilityState === "visible") {
-                reg.update().catch(() => {});
-              }
-            };
-            document.addEventListener("visibilitychange", onVisibility);
-
-            return () => {
-              clearInterval(updateInterval);
-              document.removeEventListener("visibilitychange", onVisibility);
-            };
-          })
-          .catch(() => {});
-
-        let refreshing = false;
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (!refreshing) {
-            refreshing = true;
-            window.location.reload();
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then((reg) => {
+          // Check if there is already a waiting service worker
+          if (reg.waiting) {
+            waitingWorkerRef.current = reg.waiting;
+            setUpdateAvailable(true);
           }
-        });
-      } else {
-        navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => {});
-        if ("caches" in window) {
-          caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+
+          // Check if a worker is currently installing
+          if (reg.installing) {
+            reg.installing.addEventListener("statechange", (e: any) => {
+              if (e.target.state === "installed" && navigator.serviceWorker.controller) {
+                waitingWorkerRef.current = reg.waiting || reg.installing;
+                setUpdateAvailable(true);
+              }
+            });
+          }
+
+          // Listen for newly installed updates
+          reg.addEventListener("updatefound", () => {
+            const newWorker = reg.installing;
+            if (!newWorker) return;
+            newWorker.addEventListener("statechange", () => {
+              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                waitingWorkerRef.current = newWorker;
+                setUpdateAvailable(true);
+              }
+            });
+          });
+
+          // Check for new updates immediately, then poll every 60 seconds
+          reg.update().catch(() => {});
+          const updateInterval = setInterval(() => {
+            reg.update().catch(() => {});
+          }, 60 * 1000);
+
+          // Also check when user focuses or returns to the window
+          const onVisibility = () => {
+            if (document.visibilityState === "visible") {
+              reg.update().catch(() => {});
+            }
+          };
+          document.addEventListener("visibilitychange", onVisibility);
+          window.addEventListener("focus", onVisibility);
+
+          return () => {
+            clearInterval(updateInterval);
+            document.removeEventListener("visibilitychange", onVisibility);
+            window.removeEventListener("focus", onVisibility);
+          };
+        })
+        .catch(() => {});
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
         }
-      }
+      });
     }
 
     return () => {
@@ -674,7 +681,7 @@ export default function Dashboard() {
 
   return (
     <div
-      className={`app-shell os-${mobilePlatform} ${currentTheme === "light" ? "theme-light" : ""}`}
+      className={`app-shell os-${mobilePlatform} ${currentTheme === "light" ? "theme-light" : ""} ${desktopSidebarCollapsed ? "sidebar-collapsed" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
@@ -705,25 +712,36 @@ export default function Dashboard() {
       )}
 
       {/* Left Sidebar Navigation / Mobile Slide-Over Drawer (§5.2 of Product Concept Document) */}
-      <aside className={`sidebar ${mobileDrawerOpen ? "open" : ""}`}>
-        <div
-          className="brand-row"
-          onClick={() => {
-            setMobileDrawerOpen(false);
-            openModal("onboarding");
-          }}
-          title="Customize assistant identity"
-        >
-          <div className="brand-avatar" style={{ overflow: "hidden" }}>
-            <AvatarGlyph avatar={botAvatar} customUrl={botCustomUrl} forHeader />
-          </div>
-          <div className="brand-meta">
-            <div className="brand-name">{botName}</div>
-            <div className="brand-tag">
-              <span className="status-dot" />
-              <span>Local Private AI</span>
+      <aside className={`sidebar ${mobileDrawerOpen ? "open" : ""} ${desktopSidebarCollapsed ? "collapsed" : ""}`}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+          <div
+            className="brand-row"
+            style={{ flex: 1, minWidth: 0 }}
+            onClick={() => {
+              setMobileDrawerOpen(false);
+              openModal("onboarding");
+            }}
+            title="Customize assistant identity"
+          >
+            <div className="brand-avatar" style={{ overflow: "hidden" }}>
+              <AvatarGlyph avatar={botAvatar} customUrl={botCustomUrl} forHeader />
+            </div>
+            <div className="brand-meta">
+              <div className="brand-name">{botName}</div>
+              <div className="brand-tag">
+                <span className="status-dot" />
+                <span>Local Private AI</span>
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            className="sidebar-collapse-toggle hide-on-mobile"
+            onClick={() => setDesktopSidebarCollapsed((prev) => !prev)}
+            title={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {desktopSidebarCollapsed ? "⇥" : "⇤"}
+          </button>
         </div>
 
         <nav className="nav-group">
@@ -843,21 +861,6 @@ export default function Dashboard() {
               <span>Theme: {currentTheme === "dark" ? "Dark" : "Light"}</span>
             </div>
           </button>
-          {installPromptEvent && (
-            <button
-              className="nav-btn"
-              onClick={async () => {
-                try {
-                  await installPromptEvent.prompt();
-                  setInstallPromptEvent(null);
-                } catch {}
-              }}
-            >
-              <div className="nav-btn-left">
-                <span style={{ color: "var(--accent)", fontWeight: 600 }}>⬇ Install App (PWA)</span>
-              </div>
-            </button>
-          )}
         </nav>
 
         <div className="sidebar-footer">
@@ -873,6 +876,19 @@ export default function Dashboard() {
         {/* Top Header Bar */}
         <header className="topbar">
           <div className="topbar-title">
+            {desktopSidebarCollapsed && (
+              <button
+                type="button"
+                className="desktop-sidebar-expand-btn hide-on-mobile"
+                onClick={() => setDesktopSidebarCollapsed(false)}
+                title="Expand sidebar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                </svg>
+              </button>
+            )}
             <button
               className="mobile-menu-btn"
               onClick={() => setMobileDrawerOpen(true)}
@@ -950,6 +966,21 @@ export default function Dashboard() {
           </div>
 
           <div className="topbar-actions">
+            {installPromptEvent && (
+              <button
+                className="btn-primary install-top-btn"
+                onClick={async () => {
+                  try {
+                    await installPromptEvent.prompt();
+                    setInstallPromptEvent(null);
+                  } catch {}
+                }}
+                title="Install app to your device for offline and home screen access"
+              >
+                <span>⬇ Install</span>
+                <span className="hide-on-xs"> App</span>
+              </button>
+            )}
             {updateAvailable && (
               <div className="pwa-update-pill">
                 <span className="pwa-update-dot" />
