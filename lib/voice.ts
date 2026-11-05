@@ -141,9 +141,12 @@ export function cleanTextForSpeech(raw: string): string {
 let activeAudioElement: HTMLAudioElement | null = null;
 let activeAudioUrl: string | null = null;
 let speechAborted = false;
+let currentSpokenText = "";
 
-export function stopSpeaking(): void {
+export function stopSpeaking(): string {
   speechAborted = true;
+  const interrupted = currentSpokenText;
+  currentSpokenText = "";
   if (activeAudioElement) {
     try {
       activeAudioElement.pause();
@@ -162,6 +165,7 @@ export function stopSpeaking(): void {
       window.speechSynthesis.cancel();
     } catch {}
   }
+  return interrupted;
 }
 
 function playAudioBlob(blob: Blob, playbackRate = 1.0): Promise<void> {
@@ -488,6 +492,7 @@ export async function speakAnswer(
     callbacks?.onEnd?.();
     return;
   }
+  currentSpokenText = clean;
 
   const { ragSettings } = useApp.getState();
   const engineMode = ragSettings.voiceEngine || "piper";
@@ -503,18 +508,8 @@ export async function speakAnswer(
     }
   }
 
-  // 2. Piper Neural TTS (Default for voice-to-voice conversation & multilingual OPFS neural synthesis)
-  if (!speechAborted && (engineMode === "piper" || engineMode === "auto")) {
-    const ok = await speakViaPiper(clean, chatbot, callbacks?.onStatus, callbacks?.onStart);
-    if (ok) {
-      callbacks?.onStatus?.("");
-      callbacks?.onEnd?.();
-      return;
-    }
-  }
-
-  // 3. Kokoro-82M In-Browser Neural TTS
-  if (!speechAborted && (engineMode === "kokoro" || (engineMode === "auto" && chatbot.language === "English"))) {
+  // 2. Kokoro-82M Studio Neural Voice (Top human-sounding open-weights voice model)
+  if (!speechAborted && (engineMode === "kokoro" || engineMode === "auto")) {
     try {
       const ok = await speakViaKokoro(clean, callbacks?.onStatus, callbacks?.onStart);
       if (ok) {
@@ -523,7 +518,17 @@ export async function speakAnswer(
         return;
       }
     } catch {
-      // fall through to browser synthesis
+      // fall through to Piper or browser synthesis
+    }
+  }
+
+  // 3. Piper Neural TTS (Multilingual ONNX neural synthesis cached in OPFS)
+  if (!speechAborted && (engineMode === "piper" || engineMode === "auto")) {
+    const ok = await speakViaPiper(clean, chatbot, callbacks?.onStatus, callbacks?.onStart);
+    if (ok) {
+      callbacks?.onStatus?.("");
+      callbacks?.onEnd?.();
+      return;
     }
   }
 

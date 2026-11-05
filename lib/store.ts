@@ -104,7 +104,7 @@ export const useApp = create<AppState>()(
         selectedLlmId: "SmolLM2-360M-Instruct-q4f16_1-MLC",
         userSelectedModel: false,
         enableOcr: true,
-        voiceEngine: "auto",
+        voiceEngine: "kokoro",
         piperVoiceId: "en_US-hfc_female-medium",
         kokoroVoiceId: "af_heart",
         voiceboxUrl: "http://127.0.0.1:17493",

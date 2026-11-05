@@ -101,6 +101,7 @@ export default function Dashboard() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const waitingWorkerRef = useRef<ServiceWorker | null>(null);
   const voiceSessionRef = useRef<VoiceRecorderSession | null>(null);
+  const interruptedSnippetRef = useRef<string | null>(null);
   const handsFreeRef = useRef(false);
   const regenCountRef = useRef(0);
   const chatFeedRef = useRef<HTMLDivElement>(null);
@@ -447,6 +448,9 @@ export default function Dashboard() {
           .slice(-4)
           .map((m) => ({ role: m.role, content: m.content }))
       : [];
+    const interruptedSnippet = interruptedSnippetRef.current;
+    interruptedSnippetRef.current = null;
+
     const content = await generateGroundedAnswer(
       q,
       sources,
@@ -458,7 +462,7 @@ export default function Dashboard() {
         }
       },
       priorMsgs,
-      regenOpts
+      { ...regenOpts, interruptedSnippet: interruptedSnippet || undefined }
     );
     setStreamText("");
     setThinkingSteps([]);
@@ -516,7 +520,14 @@ export default function Dashboard() {
       return;
     }
 
-    stopSpeaking();
+    if (speakingId) {
+      const cutText = stopSpeaking();
+      if (cutText && cutText.length > 10) {
+        interruptedSnippetRef.current = cutText;
+      }
+    } else {
+      stopSpeaking();
+    }
     setSpeakingId(null);
     setListening(true);
     setVoiceStatus("Requesting microphone access…");
