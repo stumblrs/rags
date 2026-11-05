@@ -1508,6 +1508,243 @@ export async function speakAnswer(
   }
 }
 
+/* ────────────────────────────────────────────────────────────────────────── *
+ * Live Streaming Speech Dispatch (Real-Time Pipelined Speech)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+async function synthesizeAudioChunk(
+  text: string,
+  chatbot: ChatbotConfig,
+  onStatus?: (msg: string) => void
+): Promise<Blob | null> {
+  const { ragSettings } = useApp.getState();
+  const engine = ragSettings.voiceEngine || "kokoro";
+
+  // Tier 1: ElevenLabs Ultra-Low Latency (~200ms)
+  if (engine === "elevenlabs" || (engine === "auto" && ragSettings.elevenLabsApiKey?.trim())) {
+    const apiKey = (ragSettings.elevenLabsApiKey || "").trim();
+    if (apiKey) {
+      try {
+        const voiceId = (ragSettings.elevenLabsVoiceId || "21m00Tcm4TlvDq8ikWAM").trim();
+        const modelId = (ragSettings.elevenLabsModelId || "eleven_turbo_v2_5").trim();
+        onStatus?.("Synthesizing live human voice via ElevenLabs…");
+        const response = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?optimize_streaming_latency=3`,
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": apiKey,
+              "Content-Type": "application/json",
+              Accept: "audio/mpeg",
+            },
+            body: JSON.stringify({
+              text,
+              model_id: modelId,
+              voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+                style: 0.0,
+                use_speaker_boost: true,
+              },
+            }),
+          }
+        );
+        if (response.ok) {
+          return await response.blob();
+        }
+      } catch (e) {
+        console.warn("ElevenLabs live chunk synthesis error:", e);
+      }
+    }
+  }
+
+  // Tier 2: Kokoro-82M (English)
+  if ((engine === "kokoro" || engine === "auto" || engine === "piper") && chatbot.language === "English") {
+    try {
+      const tts = await getKokoroTts(onStatus);
+      if (tts) {
+        const voiceId = ragSettings.kokoroVoiceId || "af_heart";
+        const speed = ragSettings.voiceSpeed || 1.0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result: any = await tts.generate(text, { voice: voiceId, speed });
+        return kokoroResultToBlob(result);
+      }
+    } catch (e) {
+      console.warn("Kokoro chunk synthesis error:", e);
+    }
+  }
+
+  // Tier 3: Piper Neural TTS
+  if (engine === "piper" || engine === "auto") {
+    try {
+      const piper = await import("@mintplex-labs/piper-tts-web");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((piper as any).TtsSession?.WASM_LOCATIONS) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (piper as any).TtsSession.WASM_LOCATIONS.onnxWasm = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/";
+      }
+      const voiceId = resolvePiperVoiceId(chatbot);
+      return await piper.predict({ text, voiceId });
+    } catch (e) {
+      console.warn("Piper chunk synthesis error:", e);
+    }
+  }
+
+  return null;
+}
+
+export interface StreamingSpeakerHandle {
+  feed: (partialText: string) => void;
+  finish: (finalText?: string) => Promise<void>;
+  cancel: () => void;
+}
+
+/**
+ * Creates a real-time streaming speech speaker:
+ * Dispatches early sentences (4-8 words) directly to the voice engine the moment
+ * the LLM emits them, cutting first-audio latency from 15 seconds to under 1 second.
+ */
+export function createStreamingSpeaker(
+  chatbot: ChatbotConfig,
+  callbacks?: { onStart?: () => void; onEnd?: () => void; onStatus?: (msg: string) => void }
+): StreamingSpeakerHandle {
+  stopSpeaking();
+
+  const session = beginSpeechSession("");
+  const { ragSettings } = useApp.getState();
+  const speed = ragSettings.voiceSpeed || 1.0;
+  const pauseScale = getPauseScale(chatbot);
+
+  let streamBuffer = "";
+  let processedCut = 0;
+  const textQueue: string[] = [];
+  let isProcessing = false;
+  let finishedFeeding = false;
+  let resolveFinish: (() => void) | null = null;
+
+  const notifyStart = () => {
+    if (session.started || session.aborted) return;
+    session.started = true;
+    callbacks?.onStart?.();
+  };
+
+  const onStatus = (msg: string) => {
+    if (!session.aborted) callbacks?.onStatus?.(msg);
+  };
+
+  async function processQueue() {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    while (textQueue.length > 0) {
+      if (session.aborted) break;
+      const rawChunk = textQueue.shift()!;
+      const clean = cleanTextForSpeech(rawChunk);
+      if (!clean) continue;
+
+      currentSpokenText += (currentSpokenText ? " " : "") + clean;
+
+      let played = false;
+      try {
+        const blob = await synthesizeAudioChunk(clean, chatbot, onStatus);
+        if (session.aborted) break;
+        if (blob) {
+          notifyStart();
+          onStatus("");
+          await playAudioBlob(session, blob, speed);
+          played = true;
+        }
+      } catch (err) {
+        console.warn("Streaming audio chunk playback failed:", err);
+      }
+
+      if (!played && !session.aborted && typeof window !== "undefined" && "speechSynthesis" in window) {
+        try {
+          const utter = new SpeechSynthesisUtterance(clean);
+          utter.lang = LANG_BCP47[chatbot.language] || "en-US";
+          utter.rate = speed;
+          notifyStart();
+          await speakUtterance(session, utter, Math.round(clean.length * 150) + 3000);
+          played = true;
+        } catch { }
+      }
+
+      if (session.aborted) break;
+      await waitForPause(session, Math.round(140 * pauseScale));
+    }
+
+    isProcessing = false;
+    if (finishedFeeding && textQueue.length === 0) {
+      if (!session.superseded && !session.aborted) {
+        currentSpokenText = "";
+        activeSession = null;
+        callbacks?.onEnd?.();
+      }
+      resolveFinish?.();
+    }
+  }
+
+  function feed(partialText: string) {
+    if (session.aborted) return;
+    streamBuffer = partialText;
+
+    const remaining = streamBuffer.slice(processedCut);
+    if (!remaining) return;
+
+    // First chunk can be eager (~20 chars) so the assistant begins talking almost instantly
+    const minLen = processedCut === 0 ? 18 : 55;
+
+    // Look for sentence boundaries (., ?, !, \n) or clause boundaries (,, ;, :)
+    const match = remaining.match(/([.!?\n]+|[,;:](?=\s))/);
+    if (match && match.index !== undefined) {
+      const cutEnd = match.index + match[0].length;
+      if (cutEnd >= minLen || match[0].includes("\n") || remaining.length > 130) {
+        const chunk = remaining.slice(0, cutEnd);
+        processedCut += cutEnd;
+        if (chunk.trim()) {
+          textQueue.push(chunk);
+          void processQueue();
+        }
+      }
+    }
+  }
+
+  async function finish(finalText?: string): Promise<void> {
+    if (session.aborted) return;
+    finishedFeeding = true;
+    if (finalText) streamBuffer = finalText;
+
+    const tail = streamBuffer.slice(processedCut).trim();
+    if (tail) {
+      processedCut = streamBuffer.length;
+      textQueue.push(tail);
+      void processQueue();
+    }
+
+    if (!isProcessing && textQueue.length === 0) {
+      if (!session.superseded && !session.aborted) {
+        currentSpokenText = "";
+        activeSession = null;
+        callbacks?.onEnd?.();
+      }
+      return;
+    }
+
+    return new Promise<void>((resolve) => {
+      resolveFinish = resolve;
+    });
+  }
+
+  function cancel() {
+    session.aborted = true;
+    textQueue.length = 0;
+    stopSpeaking();
+    resolveFinish?.();
+  }
+
+  return { feed, finish, cancel };
+}
+
 /**
  * Optional: call once when the chat opens or the mic is tapped so the FIRST spoken word of the first answer is instant
  * (loads the Piper voice / Kokoro model / OS voice list ahead of time).
@@ -1603,11 +1840,11 @@ const INCOMPLETE_ENDING_PATTERN =
  * Human-like turn-taking: wait longer when the sentence is clearly unfinished, answer sooner when it sounds complete.
  */
 function getEndOfTurnDelay(text: string): number {
-  const configured = Number(readVoiceSetting<number>("voiceEndOfTurnMs", 2000));
-  const base = clampNumber(Number.isFinite(configured) ? configured : 2000, 600, 8000);
+  const configured = Number(readVoiceSetting<number>("voiceEndOfTurnMs", 750));
+  const base = clampNumber(Number.isFinite(configured) ? configured : 750, 400, 3500);
   const trimmed = text.trim();
   if (!trimmed) return base;
-  if (/[,;:]$/.test(trimmed) || INCOMPLETE_ENDING_PATTERN.test(trimmed)) return Math.round(base * 1.6);
+  if (/[,;:]$/.test(trimmed) || INCOMPLETE_ENDING_PATTERN.test(trimmed)) return Math.round(base * 1.5);
   if (/[.!?]$/.test(trimmed)) return Math.round(base * 0.7);
   return base;
 }
@@ -2046,8 +2283,8 @@ async function startWhisperRecordingFromStream(
   options: VoiceInputOptions
 ): Promise<VoiceRecorderSession> {
   const autoSend = readVoiceSetting<boolean>("voiceAutoSend", true);
-  const configuredSilence = Number(readVoiceSetting<number>("voiceEndOfTurnMs", 2000));
-  const silenceMs = clampNumber(Number.isFinite(configuredSilence) ? configuredSilence : 2000, 600, 8000);
+  const configuredSilence = Number(readVoiceSetting<number>("voiceEndOfTurnMs", 750));
+  const silenceMs = clampNumber(Number.isFinite(configuredSilence) ? configuredSilence : 750, 450, 3500);
 
   // Use MediaRecorder if supported (Universal on Chrome, Firefox, Safari iOS 14.8+, Android)
   if (typeof MediaRecorder !== "undefined") {

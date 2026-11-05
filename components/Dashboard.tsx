@@ -16,12 +16,14 @@ import {
 } from "@/lib/rag";
 import { detectHardwareAndSelectModel, ensureLlmEngine, generateGroundedAnswer, hasWebGPU } from "@/lib/ai";
 import {
+  createStreamingSpeaker,
   speakAnswer,
   startVoiceInput,
   stopSpeaking,
   ELEVENLABS_VOICES,
   KOKORO_VOICES,
   PIPER_VOICES,
+  type StreamingSpeakerHandle,
   type VoiceRecorderSession,
 } from "@/lib/voice";
 import { formatBytes } from "@/lib/backup";
@@ -452,39 +454,14 @@ export default function Dashboard() {
     const interruptedSnippet = interruptedSnippetRef.current;
     interruptedSnippetRef.current = null;
 
-    const content = await generateGroundedAnswer(
-      q,
-      sources,
-      chatbot,
-      (partial) => {
-        // When replying as a spoken audio bubble, don't flash a wall of streaming text
-        if (!fromVoice || useApp.getState().ragSettings.voiceResponseMode === "spoken_and_text") {
-          setStreamText(partial);
-        }
-      },
-      priorMsgs,
-      { ...regenOpts, interruptedSnippet: interruptedSnippet || undefined }
-    );
-    setStreamText("");
-    setThinkingSteps([]);
-    setLiveSources([]);
-
     const newMsgId = uid("msg");
-    await db.messages.add({
-      message_id: newMsgId,
-      conversation_id: cid,
-      role: "assistant",
-      content,
-      sources,
-      voiceMode: fromVoice,
-      created_at: new Date().toISOString(),
-    });
-    setBusy(false);
+    const shouldSpeakBack = fromVoice || handsFreeRef.current;
+    let liveSpeaker: StreamingSpeakerHandle | null = null;
 
-    // Automatically talk back whenever the user asked via the microphone OR when Hands-Free mode is active!
-    if (fromVoice || handsFreeRef.current) {
+    // Start live streaming speaker: dispatches sentences to voice engine the instant words are generated!
+    if (shouldSpeakBack) {
       setSpeakingId(newMsgId);
-      speakAnswer(content, chatbot, {
+      liveSpeaker = createStreamingSpeaker(chatbot, {
         onStatus: (st) => setVoiceStatus(st || null),
         onStart: () => {
           setVoiceStatus(null);
@@ -498,10 +475,44 @@ export default function Dashboard() {
               if (handsFreeRef.current && !voiceSessionRef.current) {
                 toggleVoiceInput(true);
               }
-            }, 350);
+            }, 300);
           }
         },
       });
+    }
+
+    const content = await generateGroundedAnswer(
+      q,
+      sources,
+      chatbot,
+      (partial) => {
+        // When replying as a spoken audio bubble, don't flash a wall of streaming text
+        if (!fromVoice || useApp.getState().ragSettings.voiceResponseMode === "spoken_and_text") {
+          setStreamText(partial);
+        }
+        // Pipeline sentences to audio playback immediately
+        liveSpeaker?.feed(partial);
+      },
+      priorMsgs,
+      { ...regenOpts, interruptedSnippet: interruptedSnippet || undefined }
+    );
+    setStreamText("");
+    setThinkingSteps([]);
+    setLiveSources([]);
+
+    await db.messages.add({
+      message_id: newMsgId,
+      conversation_id: cid,
+      role: "assistant",
+      content,
+      sources,
+      voiceMode: fromVoice,
+      created_at: new Date().toISOString(),
+    });
+    setBusy(false);
+
+    if (liveSpeaker) {
+      await liveSpeaker.finish(content);
     }
   }
 
