@@ -73,7 +73,7 @@ export default function ConversationPanel() {
   useEffect(() => {
     setMounted(true);
   }, []);
-  const botName = mounted ? chatbot.name : "Cognitive AI";
+  const botName = mounted ? chatbot.name : "mairag";
   const botAvatar: AvatarCategory = mounted ? chatbot.avatar : "chat";
 
   const messages = useLiveQuery<MessageRecord[]>(

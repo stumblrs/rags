@@ -1438,14 +1438,14 @@ export default function Dashboard() {
                                   <span className="voice-wave-meta">
                                     ~{approxSeconds}s ·{" "}
                                     {ragSettings.voiceEngine === "elevenlabs"
-                                      ? "ElevenLabs Studio"
+                                      ? "Mai Ultra Voice"
                                       : ragSettings.voiceEngine === "kokoro"
-                                      ? "Kokoro-82M"
+                                      ? "Mai Local Voice"
                                       : ragSettings.voiceEngine === "piper"
-                                      ? "Piper Neural TTS"
+                                      ? "Mai Multilingual"
                                       : ragSettings.voiceEngine === "voicebox"
-                                      ? "Voicebox Studio"
-                                      : "Local Voice"}
+                                      ? "Mai Studio Bridge"
+                                      : "Mai Native Voice"}
                                   </span>
                                 </div>
                                 <div className={`voice-wave-bars ${isCurrentlySpeaking ? "active" : ""}`}>
@@ -1682,19 +1682,19 @@ export default function Dashboard() {
                               value={mounted ? ragSettings.voiceEngine || "kokoro" : "kokoro"}
                               onChange={(e) => setRagSettings({ voiceEngine: e.target.value as VoiceEngineMode })}
                             >
-                              <option value="kokoro">Kokoro-82M Neural Voice (Free · Offline)</option>
-                              <option value="elevenlabs">ElevenLabs Studio (Ultra-Realistic API)</option>
-                              <option value="auto">Smart Auto (ElevenLabs → Kokoro → Piper)</option>
-                              <option value="piper">Piper Neural TTS (OPFS · Multilingual)</option>
-                              <option value="voicebox">Voicebox.sh Local Studio (127.0.0.1:17493)</option>
-                              <option value="browser">OS System Voice (Instant · 0MB)</option>
+                              <option value="kokoro">Mai Local Voice (Free · Offline)</option>
+                              <option value="elevenlabs">Mai Ultra Voice (Studio Quality API)</option>
+                              <option value="auto">Smart Auto (Mai Ultra → Mai Local)</option>
+                              <option value="piper">Mai Multilingual (Compact · Offline)</option>
+                              <option value="voicebox">Mai Studio Bridge (Local Host)</option>
+                              <option value="browser">Device Native Voice (System OS)</option>
                             </select>
                           </div>
 
                           {mounted && ragSettings.voiceEngine === "elevenlabs" && (
                             <div>
                               <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 4 }}>
-                                ElevenLabs Voice
+                                Mai Ultra Voice Profile
                               </div>
                               <select
                                 className="select-field"
@@ -1714,7 +1714,7 @@ export default function Dashboard() {
                                   style={{ fontSize: 11, marginTop: 4, display: "block" }}
                                   onClick={() => openModal("settings")}
                                 >
-                                  ⚠️ Click here to enter your ElevenLabs API Key →
+                                  ⚠️ Click here to configure your Mai Ultra Voice Key →
                                 </button>
                               )}
                             </div>

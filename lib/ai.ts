@@ -28,7 +28,7 @@ export interface LocalModelSpec {
 export const SUPPORTED_LLMS: LocalModelSpec[] = [
   {
     id: "SmolLM2-135M-Instruct-q0f16-MLC",
-    name: "SmolLM2 135M Instruct",
+    name: "Mai Nano 135M (Ultra-Fast)",
     params: "135M",
     downloadSize: "~270 MB",
     vramRequired: "360 MB VRAM",
@@ -37,7 +37,7 @@ export const SUPPORTED_LLMS: LocalModelSpec[] = [
   },
   {
     id: "SmolLM2-360M-Instruct-q4f16_1-MLC",
-    name: "SmolLM2 360M Instruct (Default)",
+    name: "Mai Core 360M (Default · Balanced)",
     params: "360M",
     downloadSize: "~210 MB",
     vramRequired: "400 MB VRAM",
@@ -47,7 +47,7 @@ export const SUPPORTED_LLMS: LocalModelSpec[] = [
   },
   {
     id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
-    name: "Qwen 2.5 0.5B Instruct",
+    name: "Mai Polyglot 0.5B (Multilingual)",
     params: "500M",
     downloadSize: "~350 MB",
     vramRequired: "600 MB VRAM",
@@ -56,7 +56,7 @@ export const SUPPORTED_LLMS: LocalModelSpec[] = [
   },
   {
     id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-    name: "Llama 3.2 1B Instruct",
+    name: "Mai Pro 1B (High-Precision Reasoning)",
     params: "1.2B",
     downloadSize: "~710 MB",
     vramRequired: "1.1 GB VRAM",

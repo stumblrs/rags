@@ -6,13 +6,13 @@ const sans = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700"], v
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "Personal Local AI — Private Document Workspace",
-  description: "A private, personalized, browser-based AI knowledge assistant.",
+  title: "mairag — Private AI Knowledge Workspace",
+  description: "mairag — Your private, on-device AI knowledge assistant and conversational voice partner.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Cognitive AI",
+    title: "mairag",
   },
 };
 

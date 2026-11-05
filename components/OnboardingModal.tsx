@@ -60,7 +60,7 @@ export default function OnboardingModal() {
       <div className="modal-card" style={{ width: 600 }} onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
           <div>
-            <h3>Personal Local AI · Assistant Setup</h3>
+            <h3>mairag · Assistant Setup</h3>
             <span className="modal-sub">
               100% private &amp; on-device · No account, cloud storage, or external API required
             </span>
@@ -87,11 +87,11 @@ export default function OnboardingModal() {
                 className="neon-input"
                 value={chatbot.name}
                 onChange={(e) => setChatbot({ name: e.target.value })}
-                placeholder="e.g. Cognitive AI, Nova, Atlas, Athena…"
+                placeholder="e.g. mairag, Nova, Atlas, Athena…"
               />
 
               <div className="preset-chips">
-                {["Cognitive AI", "Nova AI", "Atlas AI", "Athena AI", "Research Buddy"].map((preset) => (
+                {["mairag", "Nova AI", "Atlas AI", "Athena AI", "Research Buddy"].map((preset) => (
                   <button
                     key={preset}
                     className={`chip ${chatbot.name === preset ? "active" : ""}`}

@@ -1,7 +1,7 @@
 {
-  "name": "Personal Local AI — Cognitive AI Dashboard",
-  "short_name": "Cognitive AI",
-  "description": "Private, local-first RAG assistant that runs directly in your browser.",
+  "name": "mairag — Private AI Assistant",
+  "short_name": "mairag",
+  "description": "Private, local-first RAG assistant and voice partner running on your device.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0a22",

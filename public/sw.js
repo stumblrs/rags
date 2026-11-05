@@ -1,4 +1,4 @@
-const CACHE_NAME = "personal-local-ai-v5";
+const CACHE_NAME = "mairag-v7";
 const CORE_ASSETS = ["/", "/manifest.webmanifest", "/icon.svg", "/pdf.worker.min.mjs"];
 
 self.addEventListener("message", (event) => {

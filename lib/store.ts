@@ -159,7 +159,7 @@ export const useApp = create<AppState>()(
   persist(
     (set) => ({
       chatbot: {
-        name: "Cognitive AI",
+        name: "mairag",
         avatar: "chat",
         personality: "friendly",
         language: "English",
@@ -244,10 +244,14 @@ export const useApp = create<AppState>()(
       // WITHOUT it. Merging nested objects over the defaults gives every existing install the new voice settings automatically.
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<AppState>;
+        const savedChatbot = { ...current.chatbot, ...saved.chatbot };
+        if (!savedChatbot.name || savedChatbot.name === "Cognitive AI") {
+          savedChatbot.name = "mairag";
+        }
         return {
           ...current,
           ...saved,
-          chatbot: { ...current.chatbot, ...saved.chatbot },
+          chatbot: savedChatbot,
           ragSettings: sanitizeRagSettings({ ...current.ragSettings, ...saved.ragSettings }),
         };
       },

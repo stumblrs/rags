@@ -51,22 +51,22 @@ export interface PiperVoiceOption {
 }
 
 export const PIPER_VOICES: PiperVoiceOption[] = [
-  { id: "en_US-hfc_female-medium", label: "HFC Female (Natural Conversational · Default)", language: "English" },
-  { id: "en_US-lessac-medium", label: "Lessac (Warm Expressive Female)", language: "English" },
-  { id: "en_US-lessac-high", label: "Lessac HD (Studio Expressive Female · Larger Download)", language: "English" },
-  { id: "en_US-kristin-medium", label: "Kristin (Warm Conversational Female)", language: "English" },
-  { id: "en_US-hfc_male-medium", label: "HFC Male (Natural Conversational Male)", language: "English" },
-  { id: "en_US-ryan-medium", label: "Ryan (Clear Studio Male)", language: "English" },
-  { id: "en_US-amy-medium", label: "Amy (Friendly Assistant Female)", language: "English" },
-  { id: "en_GB-alba-medium", label: "Alba (British Female)", language: "English" },
-  { id: "en_GB-jenny_dioco-medium", label: "Jenny (Natural British Female)", language: "English" },
-  { id: "en_GB-cori-medium", label: "Cori (British Narrator)", language: "English" },
-  { id: "es_ES-sharvard-medium", label: "Sharvard (Spanish Neural)", language: "Spanish" },
-  { id: "fr_FR-upmc-medium", label: "UPMC (French Neural)", language: "French" },
-  { id: "de_DE-thorsten-medium", label: "Thorsten (German Neural)", language: "German" },
-  { id: "pt_BR-faber-medium", label: "Faber (Portuguese Neural)", language: "Portuguese" },
-  { id: "it_IT-riccardo-x_low", label: "Riccardo (Italian Neural)", language: "Italian" },
-  { id: "ar_JO-kareem-medium", label: "Kareem (Arabic Neural)", language: "Arabic" },
+  { id: "en_US-hfc_female-medium", label: "Mai Compact: HFC Female (Natural · Default)", language: "English" },
+  { id: "en_US-lessac-medium", label: "Mai Compact: Lessac (Warm Expressive Female)", language: "English" },
+  { id: "en_US-lessac-high", label: "Mai Compact: Lessac HD (Studio Expressive Female)", language: "English" },
+  { id: "en_US-kristin-medium", label: "Mai Compact: Kristin (Warm Female)", language: "English" },
+  { id: "en_US-hfc_male-medium", label: "Mai Compact: HFC Male (Natural Male)", language: "English" },
+  { id: "en_US-ryan-medium", label: "Mai Compact: Ryan (Clear Studio Male)", language: "English" },
+  { id: "en_US-amy-medium", label: "Mai Compact: Amy (Friendly Assistant)", language: "English" },
+  { id: "en_GB-alba-medium", label: "Mai Compact: Alba (British Female)", language: "English" },
+  { id: "en_GB-jenny_dioco-medium", label: "Mai Compact: Jenny (Natural British)", language: "English" },
+  { id: "en_GB-cori-medium", label: "Mai Compact: Cori (British Narrator)", language: "English" },
+  { id: "es_ES-sharvard-medium", label: "Mai Compact: Sharvard (Spanish)", language: "Spanish" },
+  { id: "fr_FR-upmc-medium", label: "Mai Compact: UPMC (French)", language: "French" },
+  { id: "de_DE-thorsten-medium", label: "Mai Compact: Thorsten (German)", language: "German" },
+  { id: "pt_BR-faber-medium", label: "Mai Compact: Faber (Portuguese)", language: "Portuguese" },
+  { id: "it_IT-riccardo-x_low", label: "Mai Compact: Riccardo (Italian)", language: "Italian" },
+  { id: "ar_JO-kareem-medium", label: "Mai Compact: Kareem (Arabic)", language: "Arabic" },
 ];
 
 const DEFAULT_PIPER_BY_LANG: Record<string, string> = {
@@ -86,18 +86,18 @@ export interface KokoroVoiceOption {
 }
 
 export const KOKORO_VOICES: KokoroVoiceOption[] = [
-  { id: "af_heart", label: "Heart (Warm Female · Studio Default)", accent: "US English" },
-  { id: "af_bella", label: "Bella (Expressive Female)", accent: "US English" },
-  { id: "af_nicole", label: "Nicole (Calm Professional Female)", accent: "US English" },
-  { id: "af_sarah", label: "Sarah (Friendly Conversational Female)", accent: "US English" },
-  { id: "af_nova", label: "Nova (Bright Female)", accent: "US English" },
-  { id: "am_adam", label: "Adam (Clear Narrative Male)", accent: "US English" },
-  { id: "am_michael", label: "Michael (Deep Conversational Male)", accent: "US English" },
-  { id: "am_liam", label: "Liam (Relaxed Male)", accent: "US English" },
-  { id: "bf_emma", label: "Emma (Natural British Female)", accent: "UK English" },
-  { id: "bf_isabella", label: "Isabella (Refined British Female)", accent: "UK English" },
-  { id: "bm_george", label: "George (Measured British Male)", accent: "UK English" },
-  { id: "bm_lewis", label: "Lewis (Warm British Male)", accent: "UK English" },
+  { id: "af_heart", label: "Mai Local: Heart (Warm Female · Default)", accent: "US English" },
+  { id: "af_bella", label: "Mai Local: Bella (Expressive Female)", accent: "US English" },
+  { id: "af_nicole", label: "Mai Local: Nicole (Calm Professional)", accent: "US English" },
+  { id: "af_sarah", label: "Mai Local: Sarah (Conversational)", accent: "US English" },
+  { id: "af_nova", label: "Mai Local: Nova (Bright Female)", accent: "US English" },
+  { id: "am_adam", label: "Mai Local: Adam (Clear Narrative Male)", accent: "US English" },
+  { id: "am_michael", label: "Mai Local: Michael (Deep Conversational Male)", accent: "US English" },
+  { id: "am_liam", label: "Mai Local: Liam (Relaxed Male)", accent: "US English" },
+  { id: "bf_emma", label: "Mai Local: Emma (Natural British Female)", accent: "UK English" },
+  { id: "bf_isabella", label: "Mai Local: Isabella (Refined British Female)", accent: "UK English" },
+  { id: "bm_george", label: "Mai Local: George (Measured British Male)", accent: "UK English" },
+  { id: "bm_lewis", label: "Mai Local: Lewis (Warm British Male)", accent: "UK English" },
 ];
 
 export interface ElevenLabsVoiceOption {
@@ -108,26 +108,26 @@ export interface ElevenLabsVoiceOption {
 }
 
 export const ELEVENLABS_VOICES: ElevenLabsVoiceOption[] = [
-  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", description: "Calm, conversational, narrative", gender: "female" },
-  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, natural, narrative", gender: "male" },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", description: "Warm, engaging, expressive", gender: "female" },
-  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Young, natural, conversational", gender: "male" },
-  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", description: "Strong, energetic, confident", gender: "female" },
-  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Modulated, balanced, authoritative", gender: "male" },
-  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", description: "Bright, youthful, clear", gender: "female" },
-  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", description: "Crisp, commanding, professional", gender: "male" },
-  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", description: "Dynamic, conversational American", gender: "male" },
+  { id: "21m00Tcm4TlvDq8ikWAM", name: "Mai Ultra: Rachel", description: "Calm, conversational, narrative", gender: "female" },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Mai Ultra: Adam", description: "Deep, natural, narrative", gender: "male" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Mai Ultra: Bella", description: "Warm, engaging, expressive", gender: "female" },
+  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Mai Ultra: Josh", description: "Young, natural, conversational", gender: "male" },
+  { id: "AZnzlk1XvdvUeBnXmlld", name: "Mai Ultra: Domi", description: "Strong, energetic, confident", gender: "female" },
+  { id: "ErXwobaYiN019PkySvjV", name: "Mai Ultra: Antoni", description: "Modulated, balanced, authoritative", gender: "male" },
+  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Mai Ultra: Elli", description: "Bright, youthful, clear", gender: "female" },
+  { id: "VR6AewLTigWG4xSOukaG", name: "Mai Ultra: Arnold", description: "Crisp, commanding, professional", gender: "male" },
+  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Mai Ultra: Sam", description: "Dynamic, conversational American", gender: "male" },
 ];
 
 export const ELEVENLABS_MODELS = [
-  { id: "eleven_turbo_v2_5", name: "Turbo v2.5 (Fastest · ~200ms latency)" },
-  { id: "eleven_flash_v2_5", name: "Flash v2.5 (Ultra-low latency · Budget friendly)" },
-  { id: "eleven_multilingual_v2", name: "Multilingual v2 (29 Languages · High quality)" },
+  { id: "eleven_turbo_v2_5", name: "Mai Ultra Turbo (Fastest · ~200ms latency)" },
+  { id: "eleven_flash_v2_5", name: "Mai Ultra Flash (Ultra-low latency · Efficient)" },
+  { id: "eleven_multilingual_v2", name: "Mai Ultra Global (29 Languages · High quality)" },
 ];
 
 export async function probeElevenLabsKey(apiKey: string): Promise<{ valid: boolean; error?: string; userTier?: string }> {
   const cleanKey = apiKey.trim();
-  if (!cleanKey) return { valid: false, error: "Please enter an ElevenLabs API key" };
+  if (!cleanKey) return { valid: false, error: "Please enter your Mai Ultra Voice API key" };
   try {
     const res = await fetch("https://api.elevenlabs.io/v1/user/subscription", {
       headers: { "xi-api-key": cleanKey },
@@ -1172,7 +1172,7 @@ async function speakViaElevenLabs(cleanText: string, ctx: SpeechEngineContext): 
   const { ragSettings } = useApp.getState();
   const apiKey = (ragSettings.elevenLabsApiKey || "").trim();
   if (!apiKey) {
-    onStatus?.("ElevenLabs API key not set — falling back to offline neural voice…");
+    onStatus?.("Mai Ultra Voice key not set — falling back to Mai Local Voice…");
     return false;
   }
 
@@ -1191,7 +1191,7 @@ async function speakViaElevenLabs(cleanText: string, ctx: SpeechEngineContext): 
       synthesize: (chunk, index) =>
         enqueueSynthesis(async () => {
           if (session.aborted) return null;
-          if (index === 0) onStatus?.("Synthesizing human voice via ElevenLabs…");
+          if (index === 0) onStatus?.("Synthesizing voice with Mai Ultra…");
 
           const response = await fetch(
             `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?optimize_streaming_latency=3`,
@@ -1258,13 +1258,13 @@ async function speakViaKokoro(cleanText: string, ctx: SpeechEngineContext): Prom
     synthesize: (chunk, index) =>
       enqueueSynthesis(async () => {
         if (session.aborted) return null;
-        onStatus?.(index === 0 ? "Synthesizing neural voice…" : "Speaking (Kokoro-82M Neural)…");
+        onStatus?.(index === 0 ? "Synthesizing voice with Mai Local…" : "Speaking with Mai Local Voice…");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const audioResult: any = await tts.generate(chunk.text, { voice: voiceId, speed });
         return kokoroResultToBlob(audioResult);
       }),
     onFirstAudio: () => {
-      onStatus?.("Speaking (Kokoro-82M Neural)…");
+      onStatus?.("Speaking with Mai Local Voice…");
       ctx.notifyStart();
     },
   });
@@ -1527,7 +1527,7 @@ async function synthesizeAudioChunk(
       try {
         const voiceId = (ragSettings.elevenLabsVoiceId || "21m00Tcm4TlvDq8ikWAM").trim();
         const modelId = (ragSettings.elevenLabsModelId || "eleven_turbo_v2_5").trim();
-        onStatus?.("Synthesizing live human voice via ElevenLabs…");
+        onStatus?.("Synthesizing voice with Mai Ultra…");
         const response = await fetch(
           `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?optimize_streaming_latency=3`,
           {
@@ -2022,12 +2022,12 @@ async function transcribeAndFinish(audio: Float32Array, options: VoiceInputOptio
     return;
   }
   try {
-    options.onStatus?.("Transcribing speech locally with Whisper…");
+    options.onStatus?.("Transcribing speech locally with Mai Voice…");
     const text = await transcribeFloat32Audio(audio, options.language, options.onStatus);
     options.onFinal(polishTranscript(text));
   } catch (err) {
-    console.warn("Local Whisper transcription failed:", err);
-    options.onError("Local Whisper transcription failed.");
+    console.warn("Local Mai Voice transcription failed:", err);
+    options.onError("Local Mai Voice transcription failed.");
   }
 }
 
@@ -2354,12 +2354,12 @@ async function startWhisperRecordingFromStream(
       }
 
       try {
-        options.onStatus?.("Transcribing speech locally with Whisper…");
+        options.onStatus?.("Transcribing speech locally with Mai Voice…");
         const audio = await decodeAudioBlobTo16kMono(audioBlob);
         await transcribeAndFinish(audio, options);
       } catch (err) {
-        console.warn("Local Whisper transcription failed:", err);
-        options.onError("Local Whisper transcription failed.");
+        console.warn("Local Mai Voice transcription failed:", err);
+        options.onError("Local Mai Voice transcription failed.");
       }
     };
 

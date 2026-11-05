@@ -273,12 +273,12 @@ export default function StorageSettingsModal() {
                   onChange={(e) => setRagSettings({ voiceEngine: e.target.value as VoiceEngineMode })}
                   title="Choose voice synthesis engine"
                 >
-                  <option value="kokoro">Engine: Kokoro-82M Neural TTS (Free · Offline)</option>
-                  <option value="elevenlabs">Engine: ElevenLabs Studio (Ultra-Realistic Cloud API)</option>
-                  <option value="auto">Engine: Smart Auto (ElevenLabs → Kokoro → Piper → OS)</option>
-                  <option value="piper">Engine: Piper Neural TTS (OPFS · Multilingual)</option>
-                  <option value="voicebox">Engine: Voicebox.sh Local Studio (127.0.0.1:17493)</option>
-                  <option value="browser">Engine: OS System Voice (0MB · Battery Saver)</option>
+                  <option value="kokoro">Engine: Mai Local Voice (Free · Offline)</option>
+                  <option value="elevenlabs">Engine: Mai Ultra Voice (Studio Quality API)</option>
+                  <option value="auto">Engine: Smart Auto (Mai Ultra → Mai Local → Native)</option>
+                  <option value="piper">Engine: Mai Multilingual (Compact · Offline)</option>
+                  <option value="voicebox">Engine: Mai Studio Bridge (127.0.0.1:17493)</option>
+                  <option value="browser">Engine: Device Native Voice (System OS · 0MB)</option>
                 </select>
 
                 {ragSettings.voiceEngine === "elevenlabs" ? (
@@ -295,11 +295,11 @@ export default function StorageSettingsModal() {
                           setRagSettings({ elevenLabsVoiceId: e.target.value });
                         }
                       }}
-                      title="Select ElevenLabs human voice"
+                      title="Select Mai Ultra voice profile"
                     >
                       {ELEVENLABS_VOICES.map((v) => (
                         <option key={v.id} value={v.id}>
-                          ElevenLabs: {v.name} ({v.gender} · {v.description})
+                          {v.name} ({v.gender} · {v.description})
                         </option>
                       ))}
                       <option value="custom">✎ Custom / Cloned Voice ID…</option>
@@ -319,9 +319,9 @@ export default function StorageSettingsModal() {
                         className="select-field"
                         value={ragSettings.voiceboxProfileId || ""}
                         onChange={(e) => setRagSettings({ voiceboxProfileId: e.target.value })}
-                        title="Select cloned voice profile from Voicebox.sh"
+                        title="Select cloned voice profile from Mai Studio Bridge"
                       >
-                        <option value="">Default Voicebox Profile</option>
+                        <option value="">Default Mai Voice Profile</option>
                         {voiceboxProfiles.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}
@@ -337,8 +337,8 @@ export default function StorageSettingsModal() {
                         setVoiceboxProfiles(vb.profiles);
                         setStatusMsg(
                           vb.online
-                            ? `Connected to Voicebox.sh (${vb.profiles.length} voice profile(s) found).`
-                            : "Voicebox.sh desktop server not detected on port 17493. Falling back to in-browser Piper Neural TTS."
+                            ? `Connected to Mai Studio Bridge (${vb.profiles.length} voice profile(s) found).`
+                            : "Mai Studio Bridge server not detected on port 17493. Falling back to Mai Local Voice."
                         );
                       }}
                     >
@@ -350,9 +350,9 @@ export default function StorageSettingsModal() {
                     className="select-field"
                     value={ragSettings.systemVoiceURI || ""}
                     onChange={(e) => setRagSettings({ systemVoiceURI: e.target.value })}
-                    title="Select OS system speech synthesis voice"
+                    title="Select device native speech voice"
                   >
-                    <option value="">Auto-Match Best OS Voice ({chatbot.language})</option>
+                    <option value="">Auto-Match Best Native Voice ({chatbot.language})</option>
                     {systemVoices.map((sv) => (
                       <option key={sv.uri} value={sv.uri}>
                         {sv.name} ({sv.lang}{sv.local ? " · Local" : ""})
@@ -364,11 +364,11 @@ export default function StorageSettingsModal() {
                     className="select-field"
                     value={ragSettings.kokoroVoiceId || "af_heart"}
                     onChange={(e) => setRagSettings({ kokoroVoiceId: e.target.value })}
-                    title="Select Kokoro-82M neural voice persona"
+                    title="Select Mai Local neural voice persona"
                   >
                     {KOKORO_VOICES.map((v) => (
                       <option key={v.id} value={v.id}>
-                        Kokoro Voice: {v.label} ({v.accent})
+                        {v.label} ({v.accent})
                       </option>
                     ))}
                   </select>
@@ -377,18 +377,18 @@ export default function StorageSettingsModal() {
                     className="select-field"
                     value={ragSettings.piperVoiceId || "en_US-hfc_female-medium"}
                     onChange={(e) => setRagSettings({ piperVoiceId: e.target.value })}
-                    title="Select Piper neural voice model (cached in OPFS)"
+                    title="Select Mai Multilingual voice model (cached in OPFS)"
                   >
                     {PIPER_VOICES.map((v) => (
                       <option key={v.id} value={v.id}>
-                        Piper Voice: {v.label} ({v.language})
+                        {v.label} ({v.language})
                       </option>
                     ))}
                   </select>
                 )}
               </div>
 
-              {/* ElevenLabs API Key & Settings Configuration */}
+              {/* Mai Ultra Voice API Key & Settings Configuration */}
               {(ragSettings.voiceEngine === "elevenlabs" || ragSettings.voiceEngine === "auto") && (
                 <div
                   style={{
@@ -403,7 +403,7 @@ export default function StorageSettingsModal() {
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                      <span>🎙️ ElevenLabs API Configuration</span>
+                      <span>🎙️ Mai Ultra Voice Configuration</span>
                       {keyValidation?.valid && (
                         <span style={{ fontSize: 11, color: "#10b981", background: "rgba(16,185,129,0.12)", padding: "1px 6px", borderRadius: 4 }}>
                           ✓ Connected ({keyValidation.userTier})
@@ -418,7 +418,7 @@ export default function StorageSettingsModal() {
                       <input
                         type={showApiKey ? "text" : "password"}
                         className="input-field"
-                        placeholder="Paste your ElevenLabs API Key (e.g. sk_...)"
+                        placeholder="Paste your Mai Ultra Voice API Key (e.g. sk_...)"
                         value={ragSettings.elevenLabsApiKey || ""}
                         onChange={(e) => {
                           setRagSettings({ elevenLabsApiKey: e.target.value.trim() });
@@ -456,8 +456,8 @@ export default function StorageSettingsModal() {
                         setKeyValidation(result);
                         setStatusMsg(
                           result.valid
-                            ? `ElevenLabs connected successfully! Tier: ${result.userTier}.`
-                            : `ElevenLabs check failed: ${result.error}`
+                            ? `Mai Ultra Voice connected successfully! Tier: ${result.userTier}.`
+                            : `Mai Ultra Voice check failed: ${result.error}`
                         );
                       }}
                       style={{ whiteSpace: "nowrap" }}
@@ -468,7 +468,7 @@ export default function StorageSettingsModal() {
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 3 }}>ElevenLabs Model</div>
+                      <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 3 }}>Mai Ultra Model</div>
                       <select
                         className="select-field"
                         style={{ width: "100%" }}
