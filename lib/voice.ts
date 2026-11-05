@@ -620,6 +620,20 @@ export async function startVoiceInput(options: {
     }
   };
 
+  // In installed PWAs, explicitly prompt and warm the microphone permission first via getUserMedia
+  // to avoid instant "not-allowed" / "service-not-allowed" in standalone window mode.
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
+  } catch (err) {
+    const errorMsg = (err as Error).message || "";
+    if (errorMsg.includes("Permission") || (err as Error).name === "NotAllowedError") {
+      throw new Error("Microphone permission was blocked. Please enable microphone permissions in your browser/app settings.");
+    }
+    throw err;
+  }
+
   // 1. Try Native SpeechRecognition if available (Chrome, Edge, Safari, Android Chrome, iOS Safari)
   if (SpeechRec) {
     try {
