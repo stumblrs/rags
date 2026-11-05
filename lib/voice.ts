@@ -624,12 +624,17 @@ export async function startVoiceInput(options: {
   // to avoid instant "not-allowed" / "service-not-allowed" in standalone window mode.
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
+      audio: true,
     });
   } catch (err) {
     const errorMsg = (err as Error).message || "";
-    if (errorMsg.includes("Permission") || (err as Error).name === "NotAllowedError") {
-      throw new Error("Microphone permission was blocked. Please enable microphone permissions in your browser/app settings.");
+    const errorName = (err as Error).name || "";
+    if (
+      errorName === "NotAllowedError" ||
+      errorName === "PermissionDeniedError" ||
+      errorMsg.toLowerCase().includes("permission")
+    ) {
+      throw new Error("Microphone permission was not granted. Tap the mic button again and click 'Allow'.");
     }
     throw err;
   }

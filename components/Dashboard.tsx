@@ -1770,7 +1770,11 @@ export default function Dashboard() {
                   <button
                     type="button"
                     className={`voice-mic-btn ${listening ? "listening" : ""}`}
-                    onClick={() => toggleVoiceInput()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleVoiceInput();
+                    }}
                     disabled={busy}
                     title={listening ? "Finish speaking" : "Speak your question (Voice Input)"}
                     aria-label={listening ? "Finish speaking" : "Speak your question"}
