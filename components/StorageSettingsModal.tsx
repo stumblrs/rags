@@ -11,9 +11,12 @@ import {
 } from "@/lib/backup";
 import { detectHardwareAndSelectModel, ensureLlmEngine, hasWebGPU, SUPPORTED_LLMS } from "@/lib/ai";
 import {
+  ELEVENLABS_MODELS,
+  ELEVENLABS_VOICES,
   getAvailableSystemVoices,
   KOKORO_VOICES,
   PIPER_VOICES,
+  probeElevenLabsKey,
   probeVoiceboxServer,
   speakAnswer,
   stopSpeaking,
@@ -47,6 +50,10 @@ export default function StorageSettingsModal() {
   const [voiceboxProfiles, setVoiceboxProfiles] = useState<VoiceboxProfile[]>([]);
   const [systemVoices, setSystemVoices] = useState<SystemVoiceOption[]>([]);
   const [testingVoice, setTestingVoice] = useState(false);
+  const [testingKey, setTestingKey] = useState(false);
+  const [keyValidation, setKeyValidation] = useState<{ valid: boolean; error?: string; userTier?: string } | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [customVoiceIdMode, setCustomVoiceIdMode] = useState(false);
   const [passphrase, setPassphrase] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -262,18 +269,43 @@ export default function StorageSettingsModal() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <select
                   className="select-field"
-                  value={ragSettings.voiceEngine || "piper"}
+                  value={ragSettings.voiceEngine || "kokoro"}
                   onChange={(e) => setRagSettings({ voiceEngine: e.target.value as VoiceEngineMode })}
                   title="Choose voice synthesis engine"
                 >
-                  <option value="piper">Engine: Piper Neural TTS (OPFS · Fast &amp; Multilingual)</option>
-                  <option value="auto">Engine: Smart Auto (Voicebox → Piper → Kokoro → OS)</option>
-                  <option value="kokoro">Engine: Kokoro-82M In-Browser Neural TTS</option>
+                  <option value="kokoro">Engine: Kokoro-82M Neural TTS (Free · Offline)</option>
+                  <option value="elevenlabs">Engine: ElevenLabs Studio (Ultra-Realistic Cloud API)</option>
+                  <option value="auto">Engine: Smart Auto (ElevenLabs → Kokoro → Piper → OS)</option>
+                  <option value="piper">Engine: Piper Neural TTS (OPFS · Multilingual)</option>
                   <option value="voicebox">Engine: Voicebox.sh Local Studio (127.0.0.1:17493)</option>
                   <option value="browser">Engine: OS System Voice (0MB · Battery Saver)</option>
                 </select>
 
-                {(ragSettings.voiceEngine === "voicebox" || (voiceboxOnline && ragSettings.voiceEngine === "auto")) ? (
+                {ragSettings.voiceEngine === "elevenlabs" ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <select
+                      className="select-field"
+                      style={{ flex: 1 }}
+                      value={customVoiceIdMode ? "custom" : ragSettings.elevenLabsVoiceId || "21m00Tcm4TlvDq8ikWAM"}
+                      onChange={(e) => {
+                        if (e.target.value === "custom") {
+                          setCustomVoiceIdMode(true);
+                        } else {
+                          setCustomVoiceIdMode(false);
+                          setRagSettings({ elevenLabsVoiceId: e.target.value });
+                        }
+                      }}
+                      title="Select ElevenLabs human voice"
+                    >
+                      {ELEVENLABS_VOICES.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          ElevenLabs: {v.name} ({v.gender} · {v.description})
+                        </option>
+                      ))}
+                      <option value="custom">✎ Custom / Cloned Voice ID…</option>
+                    </select>
+                  </div>
+                ) : (ragSettings.voiceEngine === "voicebox" || (voiceboxOnline && ragSettings.voiceEngine === "auto")) ? (
                   <div style={{ display: "flex", gap: 6 }}>
                     <input
                       className="input-field"
@@ -355,6 +387,115 @@ export default function StorageSettingsModal() {
                   </select>
                 )}
               </div>
+
+              {/* ElevenLabs API Key & Settings Configuration */}
+              {(ragSettings.voiceEngine === "elevenlabs" || ragSettings.voiceEngine === "auto") && (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    background: "var(--surface-raised, rgba(255,255,255,0.04))",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-color)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>🎙️ ElevenLabs API Configuration</span>
+                      {keyValidation?.valid && (
+                        <span style={{ fontSize: 11, color: "#10b981", background: "rgba(16,185,129,0.12)", padding: "1px 6px", borderRadius: 4 }}>
+                          ✓ Connected ({keyValidation.userTier})
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--text-2)" }}>Keys stored only in local browser</span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 6 }}>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type={showApiKey ? "text" : "password"}
+                        className="input-field"
+                        placeholder="Paste your ElevenLabs API Key (e.g. sk_...)"
+                        value={ragSettings.elevenLabsApiKey || ""}
+                        onChange={(e) => {
+                          setRagSettings({ elevenLabsApiKey: e.target.value.trim() });
+                          setKeyValidation(null);
+                        }}
+                        style={{ width: "100%", paddingRight: 32, fontFamily: "monospace", fontSize: 12 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        style={{
+                          position: "absolute",
+                          right: 6,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          opacity: 0.6,
+                          fontSize: 12,
+                        }}
+                        title={showApiKey ? "Hide key" : "Show key"}
+                      >
+                        {showApiKey ? "🙈" : "👁️"}
+                      </button>
+                    </div>
+
+                    <button
+                      className="btn-secondary"
+                      disabled={testingKey || !ragSettings.elevenLabsApiKey}
+                      onClick={async () => {
+                        setTestingKey(true);
+                        const result = await probeElevenLabsKey(ragSettings.elevenLabsApiKey || "");
+                        setTestingKey(false);
+                        setKeyValidation(result);
+                        setStatusMsg(
+                          result.valid
+                            ? `ElevenLabs connected successfully! Tier: ${result.userTier}.`
+                            : `ElevenLabs check failed: ${result.error}`
+                        );
+                      }}
+                      style={{ whiteSpace: "nowrap" }}
+                    >
+                      {testingKey ? "Checking…" : "Validate Key"}
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 3 }}>ElevenLabs Model</div>
+                      <select
+                        className="select-field"
+                        style={{ width: "100%" }}
+                        value={ragSettings.elevenLabsModelId || "eleven_turbo_v2_5"}
+                        onChange={(e) => setRagSettings({ elevenLabsModelId: e.target.value })}
+                      >
+                        {ELEVENLABS_MODELS.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 3 }}>Voice ID</div>
+                      <input
+                        className="input-field"
+                        style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
+                        placeholder="21m00Tcm4TlvDq8ikWAM (Rachel)"
+                        value={ragSettings.elevenLabsVoiceId || ""}
+                        onChange={(e) => setRagSettings({ elevenLabsVoiceId: e.target.value.trim() })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Speed, Pitch & Mic Reply Style Controls */}
               <div className="stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginTop: 2 }}>

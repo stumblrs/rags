@@ -14,7 +14,7 @@ export interface ChatbotConfig {
   response_style: "simple" | "detailed" | "bullets" | "steps" | "technical" | "executive";
 }
 
-export type VoiceEngineMode = "auto" | "piper" | "kokoro" | "voicebox" | "browser";
+export type VoiceEngineMode = "auto" | "kokoro" | "elevenlabs" | "piper" | "voicebox" | "browser";
 
 /** Tunable RAG, Model & Voice parameters (§4.7 & §9) */
 export interface RagSettings {
@@ -25,7 +25,10 @@ export interface RagSettings {
   selectedLlmId: string; // auto-detected or user-overridden
   userSelectedModel: boolean; // true if user manually overrode hardware recommendation
   enableOcr: boolean; // default true
-  voiceEngine: VoiceEngineMode; // "auto" | "piper" | "kokoro" | "voicebox" | "browser"
+  voiceEngine: VoiceEngineMode; // "auto" | "kokoro" | "elevenlabs" | "piper" | "voicebox" | "browser"
+  elevenLabsApiKey: string; // optional personal API key for studio human voice
+  elevenLabsVoiceId: string; // e.g. "21m00Tcm4TlvDq8ikWAM" (Rachel)
+  elevenLabsModelId: string; // "eleven_turbo_v2_5" | "eleven_flash_v2_5" | "eleven_multilingual_v2"
   piperVoiceId: string; // e.g. "en_US-hfc_female-medium", "en_US-lessac-medium", "en_GB-alba-medium"
   kokoroVoiceId: string; // e.g. "af_heart", "af_bella", "am_adam", "bf_emma", "bm_george"
   voiceboxUrl: string; // default "http://127.0.0.1:17493"
@@ -105,6 +108,9 @@ export const useApp = create<AppState>()(
         userSelectedModel: false,
         enableOcr: true,
         voiceEngine: "kokoro",
+        elevenLabsApiKey: "",
+        elevenLabsVoiceId: "21m00Tcm4TlvDq8ikWAM",
+        elevenLabsModelId: "eleven_turbo_v2_5",
         piperVoiceId: "en_US-hfc_female-medium",
         kokoroVoiceId: "af_heart",
         voiceboxUrl: "http://127.0.0.1:17493",

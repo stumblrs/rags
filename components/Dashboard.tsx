@@ -19,6 +19,7 @@ import {
   speakAnswer,
   startVoiceInput,
   stopSpeaking,
+  ELEVENLABS_VOICES,
   KOKORO_VOICES,
   PIPER_VOICES,
   type VoiceRecorderSession,
@@ -1425,13 +1426,15 @@ export default function Dashboard() {
                                   </span>
                                   <span className="voice-wave-meta">
                                     ~{approxSeconds}s ·{" "}
-                                    {ragSettings.voiceEngine === "piper" || !ragSettings.voiceEngine
-                                      ? "Piper Neural TTS"
+                                    {ragSettings.voiceEngine === "elevenlabs"
+                                      ? "ElevenLabs Studio"
                                       : ragSettings.voiceEngine === "kokoro"
                                       ? "Kokoro-82M"
+                                      : ragSettings.voiceEngine === "piper"
+                                      ? "Piper Neural TTS"
                                       : ragSettings.voiceEngine === "voicebox"
                                       ? "Voicebox Studio"
-                                      : "Local TTS"}
+                                      : "Local Voice"}
                                   </span>
                                 </div>
                                 <div className={`voice-wave-bars ${isCurrentlySpeaking ? "active" : ""}`}>
@@ -1665,20 +1668,49 @@ export default function Dashboard() {
                             <select
                               className="select-field"
                               style={{ width: "100%" }}
-                              value={mounted ? ragSettings.voiceEngine || "piper" : "piper"}
+                              value={mounted ? ragSettings.voiceEngine || "kokoro" : "kokoro"}
                               onChange={(e) => setRagSettings({ voiceEngine: e.target.value as VoiceEngineMode })}
                             >
-                              <option value="piper">Piper Neural TTS (OPFS · Fast &amp; Multilingual)</option>
-                              <option value="auto">Smart Auto (Voicebox → Piper → Kokoro → OS)</option>
-                              <option value="kokoro">Kokoro-82M Neural Studio Voice</option>
+                              <option value="kokoro">Kokoro-82M Neural Voice (Free · Offline)</option>
+                              <option value="elevenlabs">ElevenLabs Studio (Ultra-Realistic API)</option>
+                              <option value="auto">Smart Auto (ElevenLabs → Kokoro → Piper)</option>
+                              <option value="piper">Piper Neural TTS (OPFS · Multilingual)</option>
                               <option value="voicebox">Voicebox.sh Local Studio (127.0.0.1:17493)</option>
                               <option value="browser">OS System Voice (Instant · 0MB)</option>
                             </select>
                           </div>
 
+                          {mounted && ragSettings.voiceEngine === "elevenlabs" && (
+                            <div>
+                              <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 4 }}>
+                                ElevenLabs Voice
+                              </div>
+                              <select
+                                className="select-field"
+                                style={{ width: "100%" }}
+                                value={ragSettings.elevenLabsVoiceId || "21m00Tcm4TlvDq8ikWAM"}
+                                onChange={(e) => setRagSettings({ elevenLabsVoiceId: e.target.value })}
+                              >
+                                {ELEVENLABS_VOICES.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.name} ({v.gender} · {v.description})
+                                  </option>
+                                ))}
+                              </select>
+                              {!ragSettings.elevenLabsApiKey && (
+                                <button
+                                  className="link-btn"
+                                  style={{ fontSize: 11, marginTop: 4, display: "block" }}
+                                  onClick={() => openModal("settings")}
+                                >
+                                  ⚠️ Click here to enter your ElevenLabs API Key →
+                                </button>
+                              )}
+                            </div>
+                          )}
+
                           {mounted &&
                             (ragSettings.voiceEngine === "piper" ||
-                              ragSettings.voiceEngine === "auto" ||
                               !ragSettings.voiceEngine) && (
                               <div>
                                 <div style={{ fontSize: 11, color: "var(--text-2)", marginBottom: 4 }}>
