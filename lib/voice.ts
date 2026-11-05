@@ -639,7 +639,25 @@ export async function startVoiceInput(options: {
     throw err;
   }
 
-  // 1. Try Native SpeechRecognition if available (Chrome, Edge, Safari, Android Chrome, iOS Safari)
+  // 1. In standalone PWAs on Android/iOS, SpeechRecognition is notoriously broken or throws "service-not-allowed" / "network"
+  // because the standalone container cannot reach Google Speech Recognition Service.
+  // We detect if standalone / mobile and use hardware MediaRecorder directly!
+  const isStandalone =
+    typeof window !== "undefined" &&
+    (window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes("android-app://"));
+
+  const isMobile =
+    typeof navigator !== "undefined" &&
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+
+  // If in installed PWA or mobile browser, skip fragile cloud SpeechRec and use hardware MediaRecorder immediately!
+  if (isStandalone || (isMobile && !SpeechRec)) {
+    return startWhisperRecordingFromStream(stream, options);
+  }
+
+  // 2. Try Native SpeechRecognition on desktop browsers (Chrome, Edge, Safari)
   if (SpeechRec) {
     try {
       const rec = new SpeechRec();
